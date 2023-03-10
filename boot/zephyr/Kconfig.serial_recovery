@@ -171,6 +171,12 @@ config BOOT_SERIAL_BOOT_MODE
 	  Allows for entering serial recovery mode by using Zephyr's boot mode
 	  data retention system.
 
+config BOOT_SERIAL_NO_APPLICATION
+	bool "Stay in bootloader if no application"
+	help
+	  Allows for entering serial recovery mode if there is no bootable
+	  application that the bootloader can jump to.
+
 endmenu
 
 endif # MCUBOOT_SERIAL
