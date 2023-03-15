@@ -30,12 +30,7 @@
 #include "bootutil/image.h"
 #include "flash_map_backend/flash_map_backend.h"
 
-/* Error codes for using the shared memory area. */
-#define SHARED_MEMORY_OK            (0)
-#define SHARED_MEMORY_OVERFLOW      (1)
-#define SHARED_MEMORY_OVERWRITE     (2)
-#define SHARED_MEMORY_GEN_ERROR     (3)
-
+#ifndef __ZEPHYR__
 /**
  * @var shared_memory_init_done
  *
@@ -116,6 +111,7 @@ boot_add_data_to_shared_area(uint8_t        major_type,
 
     return SHARED_MEMORY_OK;
 }
+#endif /* !__ZEPHYR__ */
 #endif /* MCUBOOT_MEASURED_BOOT OR MCUBOOT_DATA_SHARING */
 
 #ifdef MCUBOOT_MEASURED_BOOT
@@ -190,7 +186,6 @@ boot_save_boot_status(uint8_t sw_module,
             break;
         }
     }
-
 
     if (!boot_record_found || !hash_found) {
         return -1;
