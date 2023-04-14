@@ -653,22 +653,38 @@ bs_rc_rsp(int rc_code)
 static void
 bs_echo(char *buf, int len)
 {
-    struct Echo echo = { 0 };
-    size_t decoded_len;
+    struct zcbor_string value = { 0 };
+    struct zcbor_string key;
+    bool ok;
     uint32_t rc = MGMT_ERR_EINVAL;
-    uint_fast8_t result = cbor_decode_Echo((const uint8_t *)buf, len, &echo, &decoded_len);
 
-    if ((result != ZCBOR_SUCCESS) || (len != decoded_len)) {
+    zcbor_state_t zsd[4];
+    zcbor_new_state(zsd, sizeof(zsd) / sizeof(zcbor_state_t), buf, len, 1);
+
+    if (!zcbor_map_start_decode(zsd)) {
         goto out;
     }
 
-    if (echo._Echo_d.value == NULL) {
+    do {
+        ok = zcbor_tstr_decode(zsd, &key);
+
+        if (ok) {
+            if (key.len == 1 && *key.value == 'd') {
+                ok = zcbor_tstr_decode(zsd, &value);
+                break;
+            }
+
+            ok = zcbor_any_skip(zsd, NULL);
+        }
+    } while (ok);
+
+    if (!ok || !zcbor_map_end_decode(zsd)) {
         goto out;
     }
 
     zcbor_map_start_encode(cbor_state, 10);
     zcbor_tstr_put_term(cbor_state, "r");
-    if (zcbor_tstr_encode(cbor_state, &echo._Echo_d) && zcbor_map_end_encode(cbor_state, 10)) {
+    if (zcbor_tstr_encode(cbor_state, &value) && zcbor_map_end_encode(cbor_state, 10)) {
         boot_serial_output();
         return;
     } else {
