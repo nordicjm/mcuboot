@@ -26,7 +26,6 @@
 #include "sysflash/sysflash.h"
 
 #include "bootutil/bootutil_log.h"
-#include "zcbor_encode.h"
 
 #ifdef __ZEPHYR__
 #include <zephyr/sys/reboot.h>
@@ -37,6 +36,8 @@
 #include <zephyr/sys/crc.h>
 #include <zephyr/sys/base64.h>
 #include <hal/hal_flash.h>
+#include <zcbor_decode.h>
+#include <zcbor_encode.h>
 #elif __ESPRESSIF__
 #include <bootloader_utility.h>
 #include <esp_rom_sys.h>
@@ -52,6 +53,10 @@
 #include <crc/crc16.h>
 #include <base64/base64.h>
 #endif /* __ZEPHYR__ */
+
+//#include "zcbor_decode.h"
+//#include "zcbor_encode.h"
+#include "zcbor_bulk.h"
 
 #include <flash_map_backend/flash_map_backend.h>
 #include <os/os.h>
@@ -72,8 +77,8 @@
 #include "single_loader.h"
 #endif
 
-#include "serial_recovery_cbor.h"
-#include "serial_recovery_echo.h"
+//#include "serial_recovery_cbor.h"
+//#include "serial_recovery_echo.h"
 #include "bootutil/boot_hooks.h"
 
 BOOT_LOG_MODULE_DECLARE(mcuboot);
@@ -385,6 +390,11 @@ bs_upload(char *buf, int len)
     size_t img_size_tmp = SIZE_MAX;     /* Temp variable for image size */
     const struct flash_area *fap = NULL;
     int rc;
+    bool upgrade;
+    struct zcbor_string img_chunk_data;
+    struct zcbor_string sha;
+    size_t decoded = 0;
+    bool ok;
 #ifdef MCUBOOT_ERASE_PROGRESSIVELY
     static off_t not_yet_erased = 0;    /* Offset of next byte to erase; writes to flash
                                          * are done in consecutive manner and erases are done
@@ -396,6 +406,27 @@ bs_upload(char *buf, int len)
     static struct flash_sector status_sector;
 #endif
 
+    zcbor_state_t zsd[4];
+    zcbor_new_state(zsd, sizeof(zsd) / sizeof(zcbor_state_t), buf, len, 1);
+
+    struct zcbor_map_decode_key_val image_upload_decode[] = {
+        ZCBOR_MAP_DECODE_KEY_DECODER("image", zcbor_uint32_decode, &img_num),
+        ZCBOR_MAP_DECODE_KEY_DECODER("data", zcbor_bstr_decode, &img_chunk_data),
+        ZCBOR_MAP_DECODE_KEY_DECODER("len", zcbor_size_decode, &img_size_tmp),
+        ZCBOR_MAP_DECODE_KEY_DECODER("off", zcbor_size_decode, &img_chunk_off),
+        ZCBOR_MAP_DECODE_KEY_DECODER("sha", zcbor_bstr_decode, &sha),
+        ZCBOR_MAP_DECODE_KEY_DECODER("upgrade", zcbor_bool_decode, &upgrade)
+    };
+
+    ok = zcbor_map_decode_bulk(zsd, image_upload_decode, ARRAY_SIZE(image_upload_decode),
+                               &decoded) == 0;
+
+    if (!ok) {
+        goto out_invalid_data;
+    }
+
+    img_chunk = img_chunk_data.value;
+    img_chunk_len = img_chunk_data.len;
     img_num = 0;
 
     /*
@@ -407,37 +438,6 @@ bs_upload(char *buf, int len)
      *   "off":<current offset of image data>
      * }
      */
-
-    struct Upload upload;
-    size_t decoded_len;
-    uint_fast8_t result = cbor_decode_Upload((const uint8_t *)buf, len, &upload, &decoded_len);
-
-    if ((result != ZCBOR_SUCCESS) || (len != decoded_len)) {
-        goto out_invalid_data;
-    }
-
-    for (int i = 0; i < upload._Upload_members_count; i++) {
-        struct Member_ *member = &upload._Upload_members[i]._Upload_members;
-        switch(member->_Member_choice) {
-            case _Member_image:
-                img_num = member->_Member_image;
-                break;
-            case _Member_data:
-                img_chunk = member->_Member_data.value;
-                img_chunk_len = member->_Member_data.len;
-                break;
-            case _Member_len:
-                img_size_tmp = member->_Member_len;
-                break;
-            case _Member_off:
-                img_chunk_off = member->_Member_off;
-                break;
-            case _Member_sha:
-            default:
-                /* Nothing to do. */
-                break;
-        }
-    }
 
     if (img_chunk_off == SIZE_MAX || img_chunk == NULL) {
         /*
@@ -475,7 +475,6 @@ bs_upload(char *buf, int len)
             goto out;
          }
 #endif
-
 
 #if defined(MCUBOOT_VALIDATE_PRIMARY_SLOT_ONCE)
         /* We are using swap state at end of flash area to store validation
