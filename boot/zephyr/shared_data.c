@@ -213,6 +213,15 @@ int boot_save_shared_data(const struct image_header *hdr, const struct flash_are
                                           (void *)&mcuboot_version);
     }
 
+int lolz = swap_size2();
+
+    if (!rc) {
+        rc = boot_add_data_to_shared_area(TLV_MAJOR_BLINFO,
+                                          BLINFO_MAX_APPLICATION_SIZE,
+                                          sizeof(lolz),
+                                          (void *)&lolz);
+    }
+
     return rc;
 }
 #endif

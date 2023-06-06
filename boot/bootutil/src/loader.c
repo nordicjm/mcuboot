@@ -127,10 +127,22 @@ boot_read_image_headers(struct boot_loader_state *state, bool require_all,
  *
  * @return              0 on success; nonzero on failure.
  */
+int ohshit = 0;
+
+int swap_size2()
+{
+return ohshit;
+}
+
+
 static int
 boot_add_shared_data(struct boot_loader_state *state,
                      uint32_t active_slot)
 {
+
+//fuck
+ohshit = swap_size(state);
+
 #if defined(MCUBOOT_MEASURED_BOOT) || defined(MCUBOOT_DATA_SHARING)
     int rc;
 

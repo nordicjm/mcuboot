@@ -108,11 +108,12 @@ extern "C" {
         (((uint16_t)(sw_module) << MODULE_POS) | (claim))
 
 /* Bootloader information */
-#define BLINFO_MODE               0x00
-#define BLINFO_SIGNATURE_TYPE     0x01
-#define BLINFO_RECOVERY           0x02
-#define BLINFO_RUNNING_SLOT       0x03
-#define BLINFO_BOOTLOADER_VERSION 0x04
+#define BLINFO_MODE                 0x00
+#define BLINFO_SIGNATURE_TYPE       0x01
+#define BLINFO_RECOVERY             0x02
+#define BLINFO_RUNNING_SLOT         0x03
+#define BLINFO_BOOTLOADER_VERSION   0x04
+#define BLINFO_MAX_APPLICATION_SIZE 0x05
 
 enum mcuboot_mode {
     MCUBOOT_MODE_SINGLE_SLOT,
