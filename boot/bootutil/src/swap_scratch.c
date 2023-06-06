@@ -743,23 +743,7 @@ swap_run(struct boot_loader_state *state, struct boot_status *bs,
 }
 #endif /* !MCUBOOT_OVERWRITE_ONLY */
 
-#endif /* !MCUBOOT_DIRECT_XIP && !MCUBOOT_RAM_LOAD */
-
-#endif /* !MCUBOOT_SWAP_USING_MOVE */
-
-
-
-#if !defined(MCUBOOT_SWAP_USING_MOVE)
-#if !defined(MCUBOOT_DIRECT_XIP) && !defined(MCUBOOT_RAM_LOAD)
-
-//fuck
-/*
- * Slots are compatible when all sectors that store up to to size of the image
- * round up to sector size, in both slot's are able to fit in the scratch
- * area, and have sizes that are a multiple of each other (powers of two
- * presumably!).
- */
-int swap_size(struct boot_loader_state *state)
+int app_max_size(struct boot_loader_state *state)
 {
     size_t num_sectors_primary;
     size_t num_sectors_secondary;
@@ -834,56 +818,52 @@ int swap_size(struct boot_loader_state *state)
 #endif
     }
 
-BOOT_LOG_ERR("i = %d, pri = %d, j = %d, sec = %d, pri2 = %d, sec2 = %d, sz0 = %d, sz1 = %d",
-i, num_sectors_primary, j, num_sectors_secondary, primary_slot_sz, secondary_slot_sz, sz0, sz1);
+#ifdef MCUBOOT_OVERWRITE_ONLY
+    return (sz1 < sz0 ? sz1 : sz0);
+#else
+    return (secondary_slot_sz < primary_slot_sz ? secondary_slot_sz : primary_slot_sz);
+#endif
+
+//BOOT_LOG_ERR("i = %d, pri = %d, j = %d, sec = %d, pri2 = %d, sec2 = %d, sz0 = %d, sz1 = %d",
+//i, num_sectors_primary, j, num_sectors_secondary, primary_slot_sz, secondary_slot_sz, sz0, sz1);
 
 //overwrite: sz0 vs sz1 (smallest)
 //!overwrite: primary_slot_sz vs secondary_slot_sz (smallest)
-
-    return 1;
 }
-
 #else
-int swap_size(struct boot_loader_state *state)
+int app_max_size(struct boot_loader_state *state)
 {
     const struct flash_area *fap;
     int fa_id;
     int rc;
     uint32_t active_slot;
-    struct boot_swap_state* active_swap_state;
+    int primary_sz, secondary_sz;
 
     active_slot = state->slot_usage[BOOT_CURR_IMG(state)].active_slot;
 
     fa_id = flash_area_id_from_multi_image_slot(BOOT_CURR_IMG(state), active_slot);
     rc = flash_area_open(fa_id, &fap);
     assert(rc == 0);
+    primary_sz = flash_area_get_size(fap);
+    flash_area_close(fap);
+//BOOT_LOG_ERR("Size: %d", rc);
 
-rc = flash_area_get_size(fap);
-BOOT_LOG_ERR("Size: %d", rc);
-
-        flash_area_close(fap);
-
-if (active_slot == BOOT_PRIMARY_SLOT) {
-active_slot = BOOT_SECONDARY_SLOT;
-} else {
-active_slot = BOOT_PRIMARY_SLOT;
-}
+    if (active_slot == BOOT_PRIMARY_SLOT) {
+        active_slot = BOOT_SECONDARY_SLOT;
+    } else {
+        active_slot = BOOT_PRIMARY_SLOT;
+    }
 
     fa_id = flash_area_id_from_multi_image_slot(BOOT_CURR_IMG(state), active_slot);
     rc = flash_area_open(fa_id, &fap);
     assert(rc == 0);
-rc = flash_area_get_size(fap);
-BOOT_LOG_ERR("Other size: %d", rc);
+    secondary_sz = flash_area_get_size(fap);
+    flash_area_close(fap);
+//BOOT_LOG_ERR("Other size: %d", rc);
 
-        flash_area_close(fap);
-
-
-//    active_swap_state = &(state->slot_usage[BOOT_CURR_IMG(state)].swap_state);
-
-//    memset(active_swap_state, 0, sizeof(struct boot_swap_state));
-//    rc = boot_read_swap_state(fap, active_swap_state);
-//    assert(rc == 0);
-
+    return (secondary_sz < primary_sz ? secondary_sz : primary_sz);
 }
-#endif
-#endif
+
+#endif /* !MCUBOOT_DIRECT_XIP && !MCUBOOT_RAM_LOAD */
+
+#endif /* !MCUBOOT_SWAP_USING_MOVE */

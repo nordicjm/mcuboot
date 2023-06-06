@@ -127,24 +127,16 @@ boot_read_image_headers(struct boot_loader_state *state, bool require_all,
  *
  * @return              0 on success; nonzero on failure.
  */
-int ohshit = 0;
-
-int swap_size2()
-{
-return ohshit;
-}
-
-
 static int
 boot_add_shared_data(struct boot_loader_state *state,
                      uint32_t active_slot)
 {
-
-//fuck
-ohshit = swap_size(state);
-
 #if defined(MCUBOOT_MEASURED_BOOT) || defined(MCUBOOT_DATA_SHARING)
     int rc;
+
+#ifdef MCUBOOT_DATA_SHARING
+    int max_app_size;
+#endif
 
 #ifdef MCUBOOT_MEASURED_BOOT
     rc = boot_save_boot_status(BOOT_CURR_IMG(state),
@@ -157,9 +149,10 @@ ohshit = swap_size(state);
 #endif /* MCUBOOT_MEASURED_BOOT */
 
 #ifdef MCUBOOT_DATA_SHARING
+    max_app_size = app_max_size(state);
     rc = boot_save_shared_data(boot_img_hdr(state, active_slot),
                                 BOOT_IMG_AREA(state, active_slot),
-                                active_slot);
+                                active_slot, max_app_size);
     if (rc != 0) {
         BOOT_LOG_ERR("Failed to add data to shared memory area.");
         return rc;
