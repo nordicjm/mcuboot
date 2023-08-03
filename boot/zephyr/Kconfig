@@ -374,17 +374,71 @@ config BOOT_MAX_IMG_SECTORS
 	  memory usage; larger values allow it to support larger images.
 	  If unsure, leave at the default value.
 
-config MEASURED_BOOT
-	bool "Store the boot state/measurements in shared memory"
+config BOOT_SHARE_BACKEND_AVAILABLE
+	bool
 	default n
+	help
+	  Hidden open which indicates if there is a sharing backend available.
+
+# Workaround for not being able to have commas in macro arguments
+DT_CHOSEN_BOOTLOADER_CONFIG := zephyr,bootloader-config
+
+config BOOT_SHARE_RETENTION_BACKEND
+	bool
+	depends on RETENTION
+	depends on $(dt_chosen_enabled,$(DT_CHOSEN_BOOTLOADER_CONFIG))
+	select BOOT_SHARE_BACKEND_AVAILABLE
+	default y
+	help
+	  Hidden option which indicates if the retention data sharing backend
+	  is available, and automatically selects BOOT_SHARE_BACKEND_AVAILABLE
+	  if it is. Requires:
+	    - Retained memory area
+	    - Retention partition of retained memory area
+	    - Chosen node "zephyr,bootloader-config" to be set to the retention
+	      partition
+
+menuconfig BOOT_SHARE_DATA
+	bool "Save application specific data"
+	default n
+	depends on BOOT_SHARE_BACKEND_AVAILABLE
+	help
+	  This will allow data to be shared between MCUboot and an application,
+	  it does not include any informatiom by default.
+
+	  Note: This requires a backend to function, see
+	  BOOT_SHARE_RETENTION_BACKEND for details on using the retention
+	  subsystem as a backend.
+
+config BOOT_SHARE_DATA_BOOTINFO
+	bool "Save boot information data"
+	default n
+	depends on BOOT_SHARE_DATA
+	help
+	  This will place information about the mcuboot configuration and
+	  running application into a shared memory area.
+
+menuconfig MEASURED_BOOT
+	bool "Store the boot state/measurements in shared memory area"
+	default n
+	depends on BOOT_SHARE_BACKEND_AVAILABLE
 	help
 	  If enabled, the bootloader will store certain boot measurements such as
 	  the hash of the firmware image in a shared memory area. This data can
 	  be used later by runtime services (e.g. by a device attestation service).
 
-config BOOT_SHARE_DATA
-	bool "Save application specific data in shared memory area"
-	default n
+	  Note: This requires a backend to function, see
+	  BOOT_SHARE_DATA_RETENTION for details on using the retention
+	  subsystem as a backend.
+
+config MEASURED_BOOT_MAX_CBOR_SIZE
+	int "Maximum CBOR size of boot state/measurements"
+	default 64
+	range 0 256
+	depends on MEASURED_BOOT
+	help
+	  The maximum size of the CBOR message which stores boot
+	  state/measurements.
 
 choice BOOT_FAULT_INJECTION_HARDENING_PROFILE
 	prompt "Fault injection hardening profile"
