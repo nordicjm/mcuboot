@@ -76,6 +76,7 @@ endif()
 # Zephyr port-specific sources.
 zephyr_library_sources(
   main.c
+  io.c
   flash_map_extended.c
   os.c
   keys.c
@@ -118,6 +119,11 @@ endif()
 if(CONFIG_SINGLE_APPLICATION_SLOT)
 zephyr_library_sources(
   ${BOOT_DIR}/zephyr/single_loader.c
+  )
+zephyr_library_include_directories(${BOOT_DIR}/bootutil/src)
+elseif(CONFIG_BOOT_FIRMWARE_LOADER)
+zephyr_library_sources(
+  ${BOOT_DIR}/zephyr/firmware_loader.c
   )
 zephyr_library_include_directories(${BOOT_DIR}/bootutil/src)
 else()
