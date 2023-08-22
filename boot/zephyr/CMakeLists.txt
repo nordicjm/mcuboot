@@ -93,7 +93,7 @@ if(NOT DEFINED CONFIG_FLASH_PAGE_LAYOUT)
     )
 endif()
 
-if(DEFINED CONFIG_BOOT_SHARE_RETENTION_BACKEND)
+if(DEFINED CONFIG_BOOT_SHARE_BACKEND_RETENTION)
   zephyr_library_sources(
     shared_data.c
     )

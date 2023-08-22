@@ -381,22 +381,42 @@ config BOOT_SHARE_BACKEND_AVAILABLE
 	  Hidden open which indicates if there is a sharing backend available.
 
 # Workaround for not being able to have commas in macro arguments
-DT_CHOSEN_BOOTLOADER_CONFIG := zephyr,bootloader-config
+DT_CHOSEN_BOOTLOADER_INFO := zephyr,bootloader-info
 
-config BOOT_SHARE_RETENTION_BACKEND
+config BOOT_SHARE_BACKEND_AVAILABLE
 	bool
-	depends on RETENTION
-	depends on $(dt_chosen_enabled,$(DT_CHOSEN_BOOTLOADER_CONFIG))
-	select BOOT_SHARE_BACKEND_AVAILABLE
-	default y
+	default n
 	help
-	  Hidden option which indicates if the retention data sharing backend
-	  is available, and automatically selects BOOT_SHARE_BACKEND_AVAILABLE
-	  if it is. Requires:
+	  Hidden open which indicates if there is a sharing backend available.
+
+choice BOOT_SHARE_BACKEND
+	prompt "Shared data backend"
+	default BOOT_SHARE_BACKEND_DISABLED
+
+config BOOT_SHARE_BACKEND_DISABLED
+	bool "Disabled"
+	help
+	  No data sharing support.
+
+config BOOT_SHARE_BACKEND_RETENTION
+	bool "Retention"
+	depends on RETENTION
+	depends on $(dt_chosen_enabled,$(DT_CHOSEN_BOOTLOADER_INFO))
+	select BOOT_SHARE_BACKEND_AVAILABLE
+	help
+	  Use retention to share data with application. Requires:
 	    - Retained memory area
 	    - Retention partition of retained memory area
-	    - Chosen node "zephyr,bootloader-config" to be set to the retention
+	    - Chosen node "zephyr,bootloader-info" to be set to the retention
 	      partition
+
+config BOOT_SHARE_BACKEND_EXTERNAL
+	bool "External (user-provided code)"
+	select BOOT_SHARE_BACKEND_AVAILABLE
+	help
+	  Use a custom user-specified storage.
+
+endchoice
 
 menuconfig BOOT_SHARE_DATA
 	bool "Save application specific data"
@@ -407,7 +427,7 @@ menuconfig BOOT_SHARE_DATA
 	  it does not include any informatiom by default.
 
 	  Note: This requires a backend to function, see
-	  BOOT_SHARE_RETENTION_BACKEND for details on using the retention
+	  BOOT_SHARE_BACKEND_RETENTION for details on using the retention
 	  subsystem as a backend.
 
 config BOOT_SHARE_DATA_BOOTINFO
@@ -415,7 +435,7 @@ config BOOT_SHARE_DATA_BOOTINFO
 	default n
 	depends on BOOT_SHARE_DATA
 	help
-	  This will place information about the mcuboot configuration and
+	  This will place information about the MCUboot configuration and
 	  running application into a shared memory area.
 
 menuconfig MEASURED_BOOT
@@ -428,7 +448,7 @@ menuconfig MEASURED_BOOT
 	  be used later by runtime services (e.g. by a device attestation service).
 
 	  Note: This requires a backend to function, see
-	  BOOT_SHARE_DATA_RETENTION for details on using the retention
+	  BOOT_SHARE_BACKEND_RETENTION for details on using the retention
 	  subsystem as a backend.
 
 config MEASURED_BOOT_MAX_CBOR_SIZE

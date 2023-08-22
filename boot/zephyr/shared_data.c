@@ -15,17 +15,17 @@
 
 #define SHARED_MEMORY_MIN_SIZE 8
 
-LOG_MODULE_REGISTER(bootloader_config, CONFIG_RETENTION_LOG_LEVEL);
+LOG_MODULE_REGISTER(bootloader_info, CONFIG_RETENTION_LOG_LEVEL);
 
 static bool shared_memory_init_done = false;
 static uint16_t shared_data_size = SHARED_DATA_HEADER_SIZE;
 static ssize_t shared_data_max_size = 0;
-static const struct device *bootloader_config_dev =
-                                    DEVICE_DT_GET(DT_CHOSEN(zephyr_bootloader_config));
+static const struct device *bootloader_info_dev =
+                                    DEVICE_DT_GET(DT_CHOSEN(zephyr_bootloader_info));
 
 BUILD_ASSERT(SHARED_MEMORY_MIN_SIZE < \
-             DT_REG_SIZE_BY_IDX(DT_CHOSEN(zephyr_bootloader_config), 0), \
-             "zephyr,bootloader-config area is too small for bootloader configuration struct");
+             DT_REG_SIZE_BY_IDX(DT_CHOSEN(zephyr_bootloader_info), 0), \
+             "zephyr,bootloader-info area is too small for bootloader information struct");
 
 int boot_add_data_to_shared_area(uint8_t        major_type,
                                  uint16_t       minor_type,
@@ -49,8 +49,8 @@ int boot_add_data_to_shared_area(uint8_t        major_type,
      * shared data area.
      */
     if (!shared_memory_init_done) {
-        retention_clear(bootloader_config_dev);
-        shared_data_max_size = retention_size(bootloader_config_dev);
+        retention_clear(bootloader_info_dev);
+        shared_data_max_size = retention_size(bootloader_info_dev);
         shared_memory_init_done = true;
     }
 
@@ -65,7 +65,7 @@ int boot_add_data_to_shared_area(uint8_t        major_type,
      */
     while (offset < tlv_end) {
         /* Create local copy to avoid unaligned access */
-        rc = retention_read(bootloader_config_dev, offset, (void *)&tlv_entry,
+        rc = retention_read(bootloader_info_dev, offset, (void *)&tlv_entry,
                             SHARED_DATA_ENTRY_HEADER_SIZE);
 
         if (rc) {
@@ -95,7 +95,7 @@ int boot_add_data_to_shared_area(uint8_t        major_type,
     }
 
     offset = shared_data_size;
-    rc = retention_write(bootloader_config_dev, offset, (void*)&tlv_entry,
+    rc = retention_write(bootloader_info_dev, offset, (void*)&tlv_entry,
                          SHARED_DATA_ENTRY_HEADER_SIZE);
     if (rc) {
         LOG_ERR("Shared data TLV header write failed: %d", rc);
@@ -103,7 +103,7 @@ int boot_add_data_to_shared_area(uint8_t        major_type,
     }
 
     offset += SHARED_DATA_ENTRY_HEADER_SIZE;
-    rc = retention_write(bootloader_config_dev, offset, data, size);
+    rc = retention_write(bootloader_info_dev, offset, data, size);
 
     if (rc) {
         LOG_ERR("Shared data TLV data write failed: %d", rc);
@@ -113,7 +113,7 @@ int boot_add_data_to_shared_area(uint8_t        major_type,
     shared_data_size += SHARED_DATA_ENTRY_SIZE(size);
     header.tlv_tot_len = shared_data_size;
 
-    rc = retention_write(bootloader_config_dev, 0, (void *)&header,
+    rc = retention_write(bootloader_info_dev, 0, (void *)&header,
                          sizeof(header));
 
     if (rc) {
