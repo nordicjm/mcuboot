@@ -1,0 +1,35 @@
+/* SPDX-License-Identifier: Apache-2.0 */
+
+/ {
+	sram@2003F000 {
+		compatible = "zephyr,memory-region", "mmio-sram";
+		reg = <0x2003F000 DT_SIZE_K(1)>;
+		zephyr,memory-region = "RetainedMem";
+		status = "okay";
+
+		retainedmem {
+			compatible = "zephyr,retained-ram";
+			status = "okay";
+			#address-cells = <1>;
+			#size-cells = <1>;
+
+			boot_info0: boot_info@0 {
+				compatible = "zephyr,retention";
+				status = "okay";
+				reg = <0x0 0x100>;
+			};
+		};
+	};
+
+	chosen {
+		zephyr,code-partition = &boot_partition;
+		zephyr,bootloader-info = &boot_info0;
+	};
+};
+
+/delete-node/ &gpregret1;
+/delete-node/ &gpregret2;
+
+&sram0 {
+	reg = <0x20000000 DT_SIZE_K(255)>;
+};
