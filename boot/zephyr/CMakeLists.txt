@@ -371,8 +371,12 @@ function(mathup num align result)
 endfunction()
 
 if(SYSBUILD)
-#todo: get write size from DTS
-set(write_size 8)
+  dt_chosen(chosen_flash PROPERTY "zephyr,flash")
+  dt_prop(write_size PATH "${chosen_flash}" PROPERTY "write-block-size")
+  if(write_size LESS 8)
+    set(write_size 8)
+  endif()
+  dt_prop(erase_size PATH "${chosen_flash}" PROPERTY "erase-block-size")
   set(key_size 0)
 
   if(CONFIG_BOOT_ENCRYPT_RSA OR CONFIG_BOOT_ENCRYPT_EC256 OR CONFIG_BOOT_ENCRYPT_X25519)
@@ -407,10 +411,15 @@ set(write_size 8)
   math(EXPR boot_status_data_size "${CONFIG_BOOT_MAX_IMG_SECTORS} * (3 * ${write_size})")
   math(EXPR required_size "${key_size} + ${boot_magic_size} + ${boot_swap_data_size} + ${boot_status_data_size}")
 
-# Todo: round up to nearest sector size from DTS
+  mathup(${required_size} ${erase_size} required_size)
+
+  if(CONFIG_BOOT_SWAP_USING_MOVE)
+    math(EXPR required_size "${required_size} + ${erase_size}")
+  endif()
+
 message(WARNING "required size: ${required_size}")
 
-#todo: save to cache or somewhere
+  set(mcuboot_image_footer_size ${required_size} CACHE INTERNAL "")
 endif()
 
 if(CONFIG_MCUBOOT_CLEANUP_ARM_CORE)
