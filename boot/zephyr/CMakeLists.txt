@@ -365,6 +365,54 @@ if(CONFIG_BOOT_ENCRYPTION_KEY_FILE AND NOT CONFIG_BOOT_ENCRYPTION_KEY_FILE STREQ
   zephyr_library_sources(${GENERATED_ENCKEY})
 endif()
 
+function(mathup num align result)
+  math(EXPR out "(((${num}) + ((${align}) - 1)) & ~((${align}) - 1))")
+  set(${result} "${out}" PARENT_SCOPE)
+endfunction()
+
+if(SYSBUILD)
+#todo: get write size from DTS
+set(write_size 8)
+  set(key_size 0)
+
+  if(CONFIG_BOOT_ENCRYPT_RSA OR CONFIG_BOOT_ENCRYPT_EC256 OR CONFIG_BOOT_ENCRYPT_X25519)
+#ifdef MCUBOOT_AES_256
+#set(BOOT_ENC_KEY_SIZE 32)
+#else
+    set(BOOT_ENC_KEY_SIZE 16)
+#endif
+
+    if(CONFIG_BOOT_SWAP_SAVE_ENCTLV)
+      if(CONFIG_BOOT_ENCRYPT_RSA)
+        set(key_size 256)
+      elseif(CONFIG_BOOT_ENCRYPT_EC256)
+        math(EXPR key_size "65 + 32 + ${BOOT_ENC_KEY_SIZE}")
+      elseif(CONFIG_BOOT_ENCRYPT_X25519)
+        math(EXPR key_size "32 + 32 + ${BOOT_ENC_KEY_SIZE}")
+      else()
+        math(EXPR key_size "${BOOT_ENC_KEY_SIZE} + 8")
+      endif()
+    else()
+      set(key_size "${BOOT_ENC_KEY_SIZE}")
+    endif()
+
+    mathup(${key_size} ${write_size} key_size)
+    math(EXPR key_size "${key_size} * 2")
+  endif()
+
+  set(boot_magic_size 16)
+  mathup(${boot_magic_size} ${write_size} boot_magic_size)
+
+  math(EXPR boot_swap_data_size "${write_size} * 4")
+  math(EXPR boot_status_data_size "${CONFIG_BOOT_MAX_IMG_SECTORS} * (3 * ${write_size})")
+  math(EXPR required_size "${key_size} + ${boot_magic_size} + ${boot_swap_data_size} + ${boot_status_data_size}")
+
+# Todo: round up to nearest sector size from DTS
+message(WARNING "required size: ${required_size}")
+
+#todo: save to cache or somewhere
+endif()
+
 if(CONFIG_MCUBOOT_CLEANUP_ARM_CORE)
 zephyr_library_sources(
   ${BOOT_DIR}/zephyr/arm_cleanup.c
