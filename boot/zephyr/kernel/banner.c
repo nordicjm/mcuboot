@@ -32,7 +32,6 @@
 #define APPLICATION_BANNER_VERSION APP_VERSION_EXTENDED_STRING
 #endif
 
-#if defined(APPLICATION_BANNER_VERSION)
 void boot_banner(void)
 {
 #if defined(CONFIG_BOOT_DELAY) && (CONFIG_BOOT_DELAY > 0)
@@ -41,6 +40,5 @@ void boot_banner(void)
 #endif /* defined(CONFIG_BOOT_DELAY) && (CONFIG_BOOT_DELAY > 0) */
 
 	printk("*** Booting MCUboot " APPLICATION_BANNER_VERSION " ***\n");
-	printk("*** " CONFIG_BOOT_BANNER_STRING " " BANNER_VERSION BANNER_POSTFIX " ***\n");
+	printk("*** " CONFIG_ZEPHYR_BOOT_BANNER_STRING " " BANNER_VERSION BANNER_POSTFIX " ***\n");
 }
-#endif /* APP_BUILD_VERSION */
