@@ -1030,6 +1030,7 @@ boot_validate_slot(struct boot_loader_state *state, int slot,
     }
 #endif
     if (!boot_is_header_valid(hdr, fap, state)) {
+BOOT_LOG_ERR("ship");
         fih_rc = FIH_FAILURE;
     } else {
         BOOT_HOOK_CALL_FIH(boot_image_check_hook, FIH_BOOT_HOOK_REGULAR,
@@ -1543,6 +1544,8 @@ boot_swap_image(struct boot_loader_state *state, struct boot_status *bs)
 
     /* FIXME: just do this if asked by user? */
 
+BOOT_LOG_ERR("boot_swap_run");
+
     size = copy_size = 0;
     image_index = BOOT_CURR_IMG(state);
 
@@ -1668,6 +1671,8 @@ boot_perform_update(struct boot_loader_state *state, struct boot_status *bs)
 #ifndef MCUBOOT_OVERWRITE_ONLY
     uint8_t swap_type;
 #endif
+
+BOOT_LOG_ERR("boot_perform_update");
 
     /* At this point there are no aborted swaps. */
 #if defined(MCUBOOT_OVERWRITE_ONLY)
@@ -2231,7 +2236,9 @@ context_boot_go(struct boot_loader_state *state, struct boot_rsp *rsp)
         /* Determine swap type and complete swap if it has been aborted. */
         boot_prepare_image_for_update(state, &bs);
 
+BOOT_LOG_ERR("w1");
         if (BOOT_IS_UPGRADE(BOOT_SWAP_TYPE(state))) {
+BOOT_LOG_ERR("w2");
             has_upgrade = true;
         }
     }
@@ -2284,25 +2291,32 @@ context_boot_go(struct boot_loader_state *state, struct boot_rsp *rsp)
         /* Set the previously determined swap type */
         bs.swap_type = BOOT_SWAP_TYPE(state);
 
+BOOT_LOG_ERR("bs.swap_type = %d", bs.swap_type);
+
         switch (BOOT_SWAP_TYPE(state)) {
         case BOOT_SWAP_TYPE_NONE:
             break;
 
         case BOOT_SWAP_TYPE_TEST:
             /* fallthrough */
+BOOT_LOG_ERR("t1");
         case BOOT_SWAP_TYPE_PERM:
+BOOT_LOG_ERR("t2");
             if (check_downgrade_prevention(state) != 0) {
                 /* Downgrade prevented */
+BOOT_LOG_ERR("t3");
                 BOOT_SWAP_TYPE(state) = BOOT_SWAP_TYPE_NONE;
                 break;
             }
             /* fallthrough */
         case BOOT_SWAP_TYPE_REVERT:
+BOOT_LOG_ERR("t4");
             rc = BOOT_HOOK_CALL(boot_perform_update_hook, BOOT_HOOK_REGULAR,
                                 BOOT_CURR_IMG(state), &(BOOT_IMG(state, 1).hdr),
                                 BOOT_IMG_AREA(state, BOOT_SECONDARY_SLOT));
             if (rc == BOOT_HOOK_REGULAR)
             {
+BOOT_LOG_ERR("t5");
                 rc = boot_perform_update(state, &bs);
             }
             assert(rc == 0);
@@ -2313,6 +2327,7 @@ context_boot_go(struct boot_loader_state *state, struct boot_rsp *rsp)
              * we don't try to boot into it again on the next reboot. Do this by
              * pretending we just reverted back to primary slot.
              */
+BOOT_LOG_ERR("t6");
 #ifndef MCUBOOT_OVERWRITE_ONLY
             /* image_ok needs to be explicitly set to avoid a new revert. */
             rc = swap_set_image_ok(BOOT_CURR_IMG(state));
@@ -2323,6 +2338,7 @@ context_boot_go(struct boot_loader_state *state, struct boot_rsp *rsp)
             break;
 
         default:
+BOOT_LOG_ERR("t7");
             BOOT_SWAP_TYPE(state) = BOOT_SWAP_TYPE_PANIC;
         }
 
@@ -2352,6 +2368,7 @@ context_boot_go(struct boot_loader_state *state, struct boot_rsp *rsp)
             continue;
         }
 #endif
+BOOT_LOG_ERR("t8");
         if (BOOT_SWAP_TYPE(state) != BOOT_SWAP_TYPE_NONE) {
             /* Attempt to read an image header from each slot. Ensure that image
              * headers in slots are aligned with headers in boot_data.

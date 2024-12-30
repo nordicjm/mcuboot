@@ -40,6 +40,10 @@
 
 #include "mcuboot_config/mcuboot_config.h"
 
+#include "bootutil/bootutil_log.h"
+
+BOOT_LOG_MODULE_DECLARE(mcuboot);
+
 #ifdef MCUBOOT_ENC_IMAGES
 #include "bootutil/enc_key.h"
 #endif
@@ -101,6 +105,19 @@ bootutil_img_hash(struct enc_key_data *enc_state, int image_index,
     }
 #endif
 
+uint32_t bump = 0;
+if (flash_area_get_id(fap) == FLASH_AREA_IMAGE_SECONDARY(image_index))
+{
+int aaa = boot_swap_type_multi(image_index);
+BOOT_LOG_ERR("aaa = %d", aaa);
+
+if (aaa == BOOT_SWAP_TYPE_TEST || aaa == BOOT_SWAP_TYPE_PERM)
+{
+bump = 0x1000;
+}
+}
+
+
     bootutil_sha_init(&sha_ctx);
 
     /* in some cases (split image) the hash is seeded with data from
@@ -140,7 +157,7 @@ bootutil_img_hash(struct enc_key_data *enc_state, int image_index,
             blk_sz = tlv_off - off;
         }
 #endif
-        rc = flash_area_read(fap, off, tmp_buf, blk_sz);
+        rc = flash_area_read(fap, off + bump, tmp_buf, blk_sz);
         if (rc) {
             bootutil_sha_drop(&sha_ctx);
             return rc;

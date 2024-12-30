@@ -65,7 +65,32 @@ bootutil_tlv_iter_begin(struct image_tlv_iter *it, const struct image_header *hd
     }
 
     if (info.it_magic != IMAGE_TLV_INFO_MAGIC) {
+//        return -1;
+
+    off_ = BOOT_TLV_OFF(hdr) + 0x1000;
+    if (LOAD_IMAGE_DATA(hdr, fap, off_, &info, sizeof(info))) {
         return -1;
+    }
+
+    if (info.it_magic == IMAGE_TLV_PROT_INFO_MAGIC) {
+        if (hdr->ih_protect_tlv_size != info.it_tlv_tot) {
+            return -1;
+        }
+
+        if (LOAD_IMAGE_DATA(hdr, fap, off_ + info.it_tlv_tot,
+                            &info, sizeof(info))) {
+            return -1;
+        }
+    } else if (hdr->ih_protect_tlv_size != 0) {
+        return -1;
+    }
+
+    if (info.it_magic != IMAGE_TLV_INFO_MAGIC) {
+        return -1;
+    }
+
+
+
     }
 
     it->hdr = hdr;
