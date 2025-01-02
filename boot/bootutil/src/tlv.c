@@ -3,6 +3,7 @@
  *
  * Copyright (c) 2019 JUUL Labs
  * Copyright (c) 2020 Arm Limited
+ * Copyright (c) 2025 Nordic Semiconductor ASA
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -18,6 +19,7 @@
  */
 
 #include <stddef.h>
+#include <errno.h>
 
 #include "bootutil/bootutil.h"
 #include "bootutil/image.h"
@@ -65,7 +67,59 @@ bootutil_tlv_iter_begin(struct image_tlv_iter *it, const struct image_header *hd
     }
 
     if (info.it_magic != IMAGE_TLV_INFO_MAGIC) {
+#if defined(MCUBOOT_SWAP_USING_OFFSET)
+#if defined(MCUBOOT_USE_FLASH_AREA_GET_SECTORS)
+        uint32_t num_sectors = 1;
+        boot_sector_t sector_data;
+        int rc;
+
+        /* For swap using offset mode, the image starts in the second sector of the upgrade slot,
+         * so apply the offset when this is needed, do this by getting information on first
+         * sector only, this is expected to return an error (on Zephyr) as there are more slots,
+         * so allow the not enough memory error
+         */
+        rc = flash_area_get_sectors(flash_area_get_id(fap), &num_sectors, &sector_data);
+
+        if ((rc != 0 && rc != -ENOMEM) || num_sectors != 1) {
+            return -1;
+        }
+
+        off_ = BOOT_TLV_OFF(hdr) + sector_data.fs_size;
+#else
+#error "MCUBOOT_USE_FLASH_AREA_GET_SECTORS must be used for swap using offset"
+#endif
+
+        if (LOAD_IMAGE_DATA(hdr, fap, off_, &info, sizeof(info))) {
+            return -1;
+        }
+
+        if (info.it_magic == IMAGE_TLV_PROT_INFO_MAGIC) {
+            if (hdr->ih_protect_tlv_size != info.it_tlv_tot) {
+                return -1;
+            }
+
+            if (LOAD_IMAGE_DATA(hdr, fap, off_ + info.it_tlv_tot,
+                                &info, sizeof(info))) {
+                return -1;
+            }
+        } else if (hdr->ih_protect_tlv_size != 0) {
+            return -1;
+        }
+
+        if (info.it_magic != IMAGE_TLV_INFO_MAGIC) {
+
+        if (LOAD_IMAGE_DATA(hdr, fap, off_, &info, sizeof(info))) {
+            return -1;
+        }
+        if (LOAD_IMAGE_DATA(hdr, fap, BOOT_TLV_OFF(hdr), &info, sizeof(info))) {
+            return -1;
+        }
+
+            return -1;
+        }
+#else
         return -1;
+#endif
     }
 
     it->hdr = hdr;

@@ -4,7 +4,7 @@
  * Copyright (c) 2016-2020 Linaro LTD
  * Copyright (c) 2016-2019 JUUL Labs
  * Copyright (c) 2019-2023 Arm Limited
- * Copyright (c) 2024 Nordic Semiconductor ASA
+ * Copyright (c) 2024-2025 Nordic Semiconductor ASA
  *
  * Original license:
  *
@@ -108,6 +108,14 @@ static struct sector_buffer_t sector_buffers;
 #define BUF_SZ BOOT_MAX_ALIGN
 #else
 #define BUF_SZ 1024
+#endif
+
+#if defined(MCUBOOT_SWAP_USING_OFFSET) && defined(MCUBOOT_ENC_IMAGES)
+#define BOOT_COPY_REGION(state, fap_pri, fap_sec, pri_off, sec_off, sz, sector_off) \
+        boot_copy_region(state, fap_pri, fap_sec, pri_off, sec_off, sz, sector_off)
+#else
+#define BOOT_COPY_REGION(state, fap_pri, fap_sec, pri_off, sec_off, sz, sector_off) \
+        boot_copy_region(state, fap_pri, fap_sec, pri_off, sec_off, sz)
 #endif
 
 static int
@@ -669,7 +677,11 @@ boot_status_reset(struct boot_status *bs)
     bs->swap_size = 0;
     bs->source = 0;
 
+#if defined(MCUBOOT_SWAP_USING_OFFSET)
+    bs->op = BOOT_STATUS_OP_SWAP;
+#else
     bs->op = BOOT_STATUS_OP_MOVE;
+#endif
     bs->idx = BOOT_STATUS_IDX_0;
     bs->state = BOOT_STATUS_STATE_0;
     bs->swap_type = BOOT_SWAP_TYPE_NONE;
@@ -678,7 +690,12 @@ boot_status_reset(struct boot_status *bs)
 bool
 boot_status_is_reset(const struct boot_status *bs)
 {
-    return (bs->op == BOOT_STATUS_OP_MOVE &&
+    return (
+#if defined(MCUBOOT_SWAP_USING_OFFSET)
+            bs->op == BOOT_STATUS_OP_SWAP &&
+#else
+            bs->op == BOOT_STATUS_OP_MOVE &&
+#endif
             bs->idx == BOOT_STATUS_IDX_0 &&
             bs->state == BOOT_STATUS_STATE_0);
 }
@@ -991,7 +1008,7 @@ boot_validate_slot(struct boot_loader_state *state, int slot,
     if (boot_check_header_erased(state, slot) == 0 ||
         (hdr->ih_flags & IMAGE_F_NON_BOOTABLE)) {
 
-#if defined(MCUBOOT_SWAP_USING_SCRATCH) || defined(MCUBOOT_SWAP_USING_MOVE)
+#if defined(MCUBOOT_SWAP_USING_SCRATCH) || defined(MCUBOOT_SWAP_USING_MOVE) || defined(MCUBOOT_SWAP_USING_OFFSET)
         /*
          * This fixes an issue where an image might be erased, but a trailer
          * be left behind. It can happen if the image is in the secondary slot
@@ -1217,14 +1234,23 @@ static void like_mbedtls_zeroize(void *p, size_t n)
  * @param off_dst               The offset within the destination flash area to
  *                                  copy to.
  * @param sz                    The number of bytes to copy.
+ * @param sector_off            (Swap using offset with encryption only) the
+ *                                  sector offset for encryption/decryption
  *
  * @return                      0 on success; nonzero on failure.
  */
 int
+#if defined(MCUBOOT_SWAP_USING_OFFSET) && defined(MCUBOOT_ENC_IMAGES)
+boot_copy_region(struct boot_loader_state *state,
+                 const struct flash_area *fap_src,
+                 const struct flash_area *fap_dst,
+                 uint32_t off_src, uint32_t off_dst, uint32_t sz, uint32_t sector_off)
+#else
 boot_copy_region(struct boot_loader_state *state,
                  const struct flash_area *fap_src,
                  const struct flash_area *fap_dst,
                  uint32_t off_src, uint32_t off_dst, uint32_t sz)
+#endif
 {
     uint32_t bytes_copied;
     int chunk_sz;
@@ -1293,7 +1319,11 @@ boot_copy_region(struct boot_loader_state *state,
         /* If only copy, then does not matter if header indicates need for
          * encryptio/decryptio, we just copy data. */
         if (!only_copy && IS_ENCRYPTED(hdr)) {
+#if defined(MCUBOOT_SWAP_USING_OFFSET)
+            uint32_t abs_off = off - sector_off + bytes_copied;
+#else
             uint32_t abs_off = off + bytes_copied;
+#endif
             if (abs_off < hdr->ih_hdr_size) {
                 /* do not decrypt header */
                 if (abs_off + chunk_sz > hdr->ih_hdr_size) {
@@ -1451,7 +1481,12 @@ boot_copy_image(struct boot_loader_state *state, struct boot_status *bs)
 
     BOOT_LOG_INF("Image %d copying the secondary slot to the primary slot: 0x%zx bytes",
                  image_index, size);
+#if defined(MCUBOOT_SWAP_USING_OFFSET)
+    rc = BOOT_COPY_REGION(state, fap_secondary_slot, fap_primary_slot,
+                          boot_img_sector_size(state, BOOT_SECONDARY_SLOT, 0), 0, size, 0);
+#else
     rc = boot_copy_region(state, fap_secondary_slot, fap_primary_slot, 0, 0, size);
+#endif
     if (rc != 0) {
         return rc;
     }
@@ -1921,7 +1956,7 @@ boot_prepare_image_for_update(struct boot_loader_state *state,
         }
 #endif
 
-#if defined(MCUBOOT_SWAP_USING_SCRATCH) || defined(MCUBOOT_SWAP_USING_MOVE)
+#if defined(MCUBOOT_SWAP_USING_SCRATCH) || defined(MCUBOOT_SWAP_USING_MOVE) || defined(MCUBOOT_SWAP_USING_OFFSET)
         /*
          * Must re-read image headers because the boot status might
          * have been updated in the previous function call.
@@ -2094,7 +2129,7 @@ static int
 check_downgrade_prevention(struct boot_loader_state *state)
 {
 #if defined(MCUBOOT_DOWNGRADE_PREVENTION) && \
-    (defined(MCUBOOT_SWAP_USING_MOVE) || defined(MCUBOOT_SWAP_USING_SCRATCH))
+    (defined(MCUBOOT_SWAP_USING_MOVE) || defined(MCUBOOT_SWAP_USING_SCRATCH) || defined(MCUBOOT_SWAP_USING_OFFSET))
     uint32_t security_counter[2];
     int rc;
 
@@ -3076,5 +3111,12 @@ const struct image_max_size *boot_get_max_app_size(void)
 #endif
 
     return image_max_sizes;
+}
+#endif
+
+#if defined(MCUBOOT_SWAP_USING_OFFSET)
+uint32_t todo_sec_off()
+{
+return boot_data.secondary_offset[BOOT_CURR_IMG(&boot_data)];
 }
 #endif

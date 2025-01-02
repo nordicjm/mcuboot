@@ -4,6 +4,7 @@
  * Copyright (c) 2017-2019 Linaro LTD
  * Copyright (c) 2016-2019 JUUL Labs
  * Copyright (c) 2019-2024 Arm Limited
+ * Copyright (c) 2025 Nordic Semiconductor ASA
  *
  * Original license:
  *
@@ -29,6 +30,7 @@
 #include <stdint.h>
 #include <inttypes.h>
 #include <string.h>
+#include <errno.h>
 
 #include <flash_map_backend/flash_map_backend.h>
 
@@ -75,6 +77,9 @@ bootutil_img_hash(struct enc_key_data *enc_state, int image_index,
     int rc;
     uint32_t blk_off;
     uint32_t tlv_off;
+#if defined(MCUBOOT_SWAP_USING_OFFSET)
+    uint32_t sector_off = 0;
+#endif
 
 #if (BOOT_IMAGE_NUMBER == 1) || !defined(MCUBOOT_ENC_IMAGES) || \
     defined(MCUBOOT_RAM_LOAD)
@@ -98,6 +103,45 @@ bootutil_img_hash(struct enc_key_data *enc_state, int image_index,
     if (MUST_DECRYPT(fap, image_index, hdr) &&
             !boot_enc_valid(enc_state, 1)) {
         return -1;
+    }
+#endif
+
+#if defined(MCUBOOT_SWAP_USING_OFFSET)
+    if (flash_area_get_id(fap) == FLASH_AREA_IMAGE_SECONDARY(image_index))
+    {
+        blk_sz = sizeof(struct image_header);
+
+        if (blk_sz > tmp_buf_sz) {
+            blk_sz = tmp_buf_sz;
+        }
+
+        rc = flash_area_read(fap, 0, tmp_buf, blk_sz);
+        if (rc) {
+            return rc;
+        }
+
+        /* For swap using offset mode, the image starts in the second sector of the upgrade slot,
+         * so apply the offset when this is needed
+         */
+        if (memcmp(tmp_buf, hdr, blk_sz) != 0) {
+#if defined(MCUBOOT_USE_FLASH_AREA_GET_SECTORS)
+            uint32_t num_sectors = 1;
+            boot_sector_t sector_data;
+
+            /* Get information on first sector only, this is expected to return an error (on
+             * Zephyr) as there are more slots, so allow the not enough memory error
+             */
+            rc = flash_area_get_sectors(flash_area_get_id(fap), &num_sectors, &sector_data);
+
+            if ((rc != 0 && rc != -ENOMEM) || num_sectors != 1) {
+                return rc;
+            }
+
+            sector_off = sector_data.fs_size;
+#else
+#error "MCUBOOT_USE_FLASH_AREA_GET_SECTORS must be used for swap using offset"
+#endif
+        }
     }
 #endif
 
@@ -140,7 +184,11 @@ bootutil_img_hash(struct enc_key_data *enc_state, int image_index,
             blk_sz = tlv_off - off;
         }
 #endif
+#if defined(MCUBOOT_SWAP_USING_OFFSET)
+        rc = flash_area_read(fap, off + sector_off, tmp_buf, blk_sz);
+#else
         rc = flash_area_read(fap, off, tmp_buf, blk_sz);
+#endif
         if (rc) {
             bootutil_sha_drop(&sha_ctx);
             return rc;
