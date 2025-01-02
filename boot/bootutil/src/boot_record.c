@@ -249,6 +249,8 @@ int boot_save_shared_data(const struct image_header *hdr, const struct flash_are
     uint8_t mode = MCUBOOT_MODE_UPGRADE_ONLY;
 #elif defined(MCUBOOT_SWAP_USING_MOVE)
     uint8_t mode = MCUBOOT_MODE_SWAP_USING_MOVE;
+#elif defined(MCUBOOT_SWAP_USING_OFFSET)
+    uint8_t mode = MCUBOOT_MODE_SWAP_USING_OFFSET;
 #elif defined(MCUBOOT_DIRECT_XIP)
 #if defined(MCUBOOT_DIRECT_XIP_REVERT)
     uint8_t mode = MCUBOOT_MODE_DIRECT_XIP_WITH_REVERT;

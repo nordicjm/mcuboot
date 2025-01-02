@@ -991,7 +991,7 @@ boot_validate_slot(struct boot_loader_state *state, int slot,
     if (boot_check_header_erased(state, slot) == 0 ||
         (hdr->ih_flags & IMAGE_F_NON_BOOTABLE)) {
 
-#if defined(MCUBOOT_SWAP_USING_SCRATCH) || defined(MCUBOOT_SWAP_USING_MOVE)
+#if defined(MCUBOOT_SWAP_USING_SCRATCH) || defined(MCUBOOT_SWAP_USING_MOVE) || defined(MCUBOOT_SWAP_USING_OFFSET)
         /*
          * This fixes an issue where an image might be erased, but a trailer
          * be left behind. It can happen if the image is in the secondary slot
@@ -1921,7 +1921,7 @@ boot_prepare_image_for_update(struct boot_loader_state *state,
         }
 #endif
 
-#if defined(MCUBOOT_SWAP_USING_SCRATCH) || defined(MCUBOOT_SWAP_USING_MOVE)
+#if defined(MCUBOOT_SWAP_USING_SCRATCH) || defined(MCUBOOT_SWAP_USING_MOVE) || defined(MCUBOOT_SWAP_USING_OFFSET)
         /*
          * Must re-read image headers because the boot status might
          * have been updated in the previous function call.
@@ -2094,7 +2094,7 @@ static int
 check_downgrade_prevention(struct boot_loader_state *state)
 {
 #if defined(MCUBOOT_DOWNGRADE_PREVENTION) && \
-    (defined(MCUBOOT_SWAP_USING_MOVE) || defined(MCUBOOT_SWAP_USING_SCRATCH))
+    (defined(MCUBOOT_SWAP_USING_MOVE) || defined(MCUBOOT_SWAP_USING_SCRATCH) || defined(MCUBOOT_SWAP_USING_OFFSET))
     uint32_t security_counter[2];
     int rc;
 

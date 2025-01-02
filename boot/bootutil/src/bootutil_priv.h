@@ -58,11 +58,12 @@ struct flash_area;
 
 #if (defined(MCUBOOT_OVERWRITE_ONLY) + \
      defined(MCUBOOT_SWAP_USING_MOVE) + \
+     defined(MCUBOOT_SWAP_USING_OFFSET) + \
      defined(MCUBOOT_DIRECT_XIP) + \
      defined(MCUBOOT_RAM_LOAD) + \
      defined(MCUBOOT_FIRMWARE_LOADER) + \
      defined(MCUBOOT_SWAP_USING_SCRATCH)) > 1
-#error "Please enable only one of MCUBOOT_OVERWRITE_ONLY, MCUBOOT_SWAP_USING_MOVE, MCUBOOT_DIRECT_XIP, MCUBOOT_RAM_LOAD or MCUBOOT_FIRMWARE_LOADER"
+#error "Please enable only one of MCUBOOT_OVERWRITE_ONLY, MCUBOOT_SWAP_USING_MOVE, MCUBOOT_SWAP_USING_OFFSET, MCUBOOT_DIRECT_XIP, MCUBOOT_RAM_LOAD or MCUBOOT_FIRMWARE_LOADER"
 #endif
 
 #if !defined(MCUBOOT_DIRECT_XIP) && \
@@ -72,6 +73,7 @@ struct flash_area;
 
 #if !defined(MCUBOOT_OVERWRITE_ONLY) && \
     !defined(MCUBOOT_SWAP_USING_MOVE) && \
+    !defined(MCUBOOT_SWAP_USING_OFFSET) && \
     !defined(MCUBOOT_DIRECT_XIP) && \
     !defined(MCUBOOT_RAM_LOAD) && \
     !defined(MCUBOOT_SINGLE_APPLICATION_SLOT) && \
@@ -196,6 +198,9 @@ _Static_assert(sizeof(boot_img_magic) == BOOT_MAGIC_SZ, "Invalid size for image 
 #define BOOT_STATUS_MOVE_STATE_COUNT    1
 #define BOOT_STATUS_SWAP_STATE_COUNT    2
 #define BOOT_STATUS_STATE_COUNT         (BOOT_STATUS_MOVE_STATE_COUNT + BOOT_STATUS_SWAP_STATE_COUNT)
+#elif MCUBOOT_SWAP_USING_OFFSET
+#define BOOT_STATUS_SWAP_STATE_COUNT    2
+#define BOOT_STATUS_STATE_COUNT         BOOT_STATUS_SWAP_STATE_COUNT
 #else
 #define BOOT_STATUS_STATE_COUNT         3
 #endif
