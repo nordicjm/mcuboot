@@ -2,6 +2,7 @@
  * SPDX-License-Identifier: Apache-2.0
  *
  * Copyright (c) 2019 JUUL Labs
+ * Copyright (c) 2025 Nordic Semiconductor ASA
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -87,12 +88,13 @@ boot_read_image_header(struct boot_loader_state *state, int slot,
     off = 0;
     if (bs && !boot_status_is_reset(bs)) {
         boot_find_status(BOOT_CURR_IMG(state), &fap);
+
         if (fap == NULL || boot_read_swap_size(fap, &swap_size)) {
             rc = BOOT_EFLASH;
             goto done;
         }
-        flash_area_close(fap);
 
+        flash_area_close(fap);
         last_idx = find_last_idx(state, swap_size);
         sz = boot_img_sector_size(state, BOOT_PRIMARY_SLOT, 0);
 
@@ -100,15 +102,13 @@ boot_read_image_header(struct boot_loader_state *state, int slot,
          * Find the correct offset or slot where the image header is expected to
          * be found for the steps where it is moved or swapped.
          */
-        if (bs->op == BOOT_STATUS_OP_MOVE && slot == 0 && bs->idx > last_idx) {
-            off = sz;
-        } else if (bs->op == BOOT_STATUS_OP_SWAP) {
-            if (bs->idx > 1 && bs->idx <= last_idx) {
+        if (bs->op == BOOT_STATUS_OP_SWAP) {
+            if (bs->idx > BOOT_STATUS_IDX_0 && bs->idx <= last_idx) {
                 slot = (slot == 0) ? 1 : 0;
-            } else if (bs->idx == 1) {
+            } else if (bs->idx == BOOT_STATUS_IDX_0) {
                 if (slot == 0) {
                     off = sz;
-                } else if (slot == 1 && bs->state == 2) {
+                } else if (slot == 1 && bs->state == BOOT_STATUS_STATE_1) {
                     slot = 0;
                 }
             }
@@ -130,26 +130,27 @@ boot_read_image_header(struct boot_loader_state *state, int slot,
 
 BOOT_LOG_ERR("prt %d = %d, %X", slot, off, out_hdr->ih_magic);
 
-    /* We only know where the headers are located when bs is valid */
     if (out_hdr->ih_magic != IMAGE_MAGIC) {
-if ((slot % 2) == 1)
-{
-off += 0x1000;
+        /* Check in the secondary position in the upgrade slot */
+        if ((slot % 2) == 1)
+        {
+//does not work for variable slot sizes
+            off += boot_img_sector_size(state, BOOT_SECONDARY_SLOT, 0);
 
-    rc = flash_area_read(fap, off, out_hdr, sizeof *out_hdr);
-    if (rc != 0) {
-        rc = BOOT_EFLASH;
-        goto done;
-    }
+            rc = flash_area_read(fap, off, out_hdr, sizeof *out_hdr);
+            if (rc != 0) {
+                rc = BOOT_EFLASH;
+                goto done;
+            }
 
 BOOT_LOG_ERR("prt %d = %d, %X", slot, off, out_hdr->ih_magic);
-}
+        }
 
-    /* We only know where the headers are located when bs is valid */
-    if (bs != NULL && out_hdr->ih_magic != IMAGE_MAGIC) {
-        rc = -1;
-        goto done;
-    }
+        /* We only know where the headers are located when bs is valid */
+        if (bs != NULL && out_hdr->ih_magic != IMAGE_MAGIC) {
+            rc = -1;
+            goto done;
+        }
     }
 
     rc = 0;
@@ -222,14 +223,11 @@ swap_read_status_bytes(const struct flash_area *fap,
     move_entries = BOOT_MAX_IMG_SECTORS * BOOT_STATUS_MOVE_STATE_COUNT;
     if (found_idx == -1) {
         /* no swap status found; nothing to do */
-    } else if (found_idx < move_entries) {
-        bs->op = BOOT_STATUS_OP_MOVE;
-        bs->idx = (found_idx  / BOOT_STATUS_MOVE_STATE_COUNT) + BOOT_STATUS_IDX_0;
-        bs->state = (found_idx % BOOT_STATUS_MOVE_STATE_COUNT) + BOOT_STATUS_STATE_0;;
     } else {
         bs->op = BOOT_STATUS_OP_SWAP;
         bs->idx = ((found_idx - move_entries) / BOOT_STATUS_SWAP_STATE_COUNT) + BOOT_STATUS_IDX_0;
         bs->state = ((found_idx - move_entries) % BOOT_STATUS_SWAP_STATE_COUNT) + BOOT_STATUS_STATE_0;
+LOG_ERR("qq bs->idx = %d, state = %d", bs->idx, bs->state);
     }
 
     return 0;
@@ -241,13 +239,13 @@ boot_status_internal_off(const struct boot_status *bs, int elem_sz)
     uint32_t off;
     int idx_sz;
 
-    idx_sz = elem_sz * ((bs->op == BOOT_STATUS_OP_MOVE) ?
-            BOOT_STATUS_MOVE_STATE_COUNT : BOOT_STATUS_SWAP_STATE_COUNT);
+    idx_sz = elem_sz * BOOT_STATUS_SWAP_STATE_COUNT;
 
-    off = ((bs->op == BOOT_STATUS_OP_MOVE) ?
-               0 : (BOOT_MAX_IMG_SECTORS * BOOT_STATUS_MOVE_STATE_COUNT * elem_sz)) +
+    off = (BOOT_MAX_IMG_SECTORS * BOOT_STATUS_MOVE_STATE_COUNT * elem_sz) +
            (bs->idx - BOOT_STATUS_IDX_0) * idx_sz +
            (bs->state - BOOT_STATUS_STATE_0) * elem_sz;
+
+LOG_ERR("qq off = %d", off);
 
     return off;
 }
@@ -398,75 +396,19 @@ swap_status_source(struct boot_loader_state *state)
     return BOOT_STATUS_SOURCE_NONE;
 }
 
-/*
- * "Moves" the sector located at idx - 1 to idx.
- */
-#if 1
-static void
-boot_move_sector_up(int idx, uint32_t sz, struct boot_loader_state *state,
-        struct boot_status *bs, const struct flash_area *fap_pri,
-        const struct flash_area *fap_sec)
-{
-    uint32_t new_off;
-    uint32_t old_off;
-    int rc;
-
-    /*
-     * FIXME: assuming sectors of size == sz, a single off variable
-     * would be enough
-     */
-
-    /* Calculate offset from start of image area. */
-    new_off = boot_img_sector_off(state, BOOT_PRIMARY_SLOT, idx);
-    old_off = boot_img_sector_off(state, BOOT_PRIMARY_SLOT, idx - 1);
-
-    if (bs->idx == BOOT_STATUS_IDX_0) {
-        if (bs->source != BOOT_STATUS_SOURCE_PRIMARY_SLOT) {
-            rc = swap_erase_trailer_sectors(state, fap_pri);
-            assert(rc == 0);
-
-            rc = swap_status_init(state, fap_pri, bs);
-            assert(rc == 0);
-        }
-
-        rc = swap_erase_trailer_sectors(state, fap_sec);
-        assert(rc == 0);
-    }
-
-#if 0
-    rc = boot_erase_region(fap_pri, new_off, sz);
-    assert(rc == 0);
-
-    rc = boot_copy_region(state, fap_pri, fap_pri, old_off, new_off, sz);
-    assert(rc == 0);
-
-    rc = boot_write_status(state, bs);
-#endif
-
-    bs->idx++;
-    BOOT_STATUS_ASSERT(rc == 0);
-}
-#endif
-
 static void
 boot_swap_sectors(int idx, uint32_t sz, struct boot_loader_state *state,
         struct boot_status *bs, const struct flash_area *fap_pri,
         const struct flash_area *fap_sec)
 {
     uint32_t pri_off;
-//    uint32_t pri_up_off;
     uint32_t sec_off;
     uint32_t sec_up_off;
     int rc;
 
-//    pri_up_off = boot_img_sector_off(state, BOOT_PRIMARY_SLOT, idx);
-    pri_off = boot_img_sector_off(state, BOOT_PRIMARY_SLOT, idx);
-    sec_off = boot_img_sector_off(state, BOOT_SECONDARY_SLOT, idx);
-    sec_up_off = boot_img_sector_off(state, BOOT_PRIMARY_SLOT, idx + 1);
-
-/*
-
-*/
+    pri_off = boot_img_sector_off(state, BOOT_PRIMARY_SLOT, idx - 1);
+    sec_off = boot_img_sector_off(state, BOOT_SECONDARY_SLOT, idx - 1);
+    sec_up_off = boot_img_sector_off(state, BOOT_PRIMARY_SLOT, idx);
 
     if (bs->state == BOOT_STATUS_STATE_0) {
 //copy from slot 0 X to slot 1 X
@@ -479,6 +421,12 @@ BOOT_LOG_ERR("copy primary 0x%x -> secondary 0x%x of 0x%x", pri_off, sec_off, sz
         rc = boot_copy_region(state, fap_pri, fap_sec, pri_off, sec_off, sz);
         assert(rc == 0);
 
+        rc = boot_write_status(state, bs);
+        bs->state = BOOT_STATUS_STATE_1;
+        BOOT_STATUS_ASSERT(rc == 0);
+    }
+
+    if (bs->state == BOOT_STATUS_STATE_1) {
 //erase slot 0 X
 BOOT_LOG_ERR("erasing primary 0x%x of 0x%x", pri_off, sz);
         rc = boot_erase_region(fap_pri, pri_off, sz);
@@ -490,25 +438,10 @@ BOOT_LOG_ERR("copy secondary 0x%x -> primary 0x%x of 0x%x", sec_up_off, pri_off,
         assert(rc == 0);
 
         rc = boot_write_status(state, bs);
-        bs->state = BOOT_STATUS_STATE_1;
-        bs->state = BOOT_STATUS_STATE_0;
-        BOOT_STATUS_ASSERT(rc == 0);
-    }
-
-#if 0
-    if (bs->state == BOOT_STATUS_STATE_1) {
-        rc = boot_erase_region(fap_sec, sec_off, sz);
-        assert(rc == 0);
-
-        rc = boot_copy_region(state, fap_pri, fap_sec, pri_up_off, sec_off, sz);
-        assert(rc == 0);
-
-        rc = boot_write_status(state, bs);
         bs->idx++;
         bs->state = BOOT_STATUS_STATE_0;
         BOOT_STATUS_ASSERT(rc == 0);
     }
-#endif
 }
 
 static void
@@ -517,19 +450,13 @@ boot_swap_sectors_revert(int idx, uint32_t sz, struct boot_loader_state *state,
         const struct flash_area *fap_sec)
 {
     uint32_t pri_off;
-//    uint32_t pri_up_off;
     uint32_t sec_off;
     uint32_t sec_up_off;
     int rc;
 
-//    pri_up_off = boot_img_sector_off(state, BOOT_PRIMARY_SLOT, idx);
     pri_off = boot_img_sector_off(state, BOOT_PRIMARY_SLOT, idx - 1);
-    sec_off = boot_img_sector_off(state, BOOT_SECONDARY_SLOT, idx);
+    sec_off = boot_img_sector_off(state, BOOT_SECONDARY_SLOT, idx - 0);
     sec_up_off = boot_img_sector_off(state, BOOT_PRIMARY_SLOT, idx - 1);
-
-/*
-
-*/
 
     if (bs->state == BOOT_STATUS_STATE_0) {
 //copy from slot 0 X to slot 1 X
@@ -542,6 +469,12 @@ BOOT_LOG_ERR("copy primary 0x%x -> secondary 0x%x of 0x%x", pri_off, sec_off, sz
         rc = boot_copy_region(state, fap_pri, fap_sec, pri_off, sec_off, sz);
         assert(rc == 0);
 
+        rc = boot_write_status(state, bs);
+        bs->state = BOOT_STATUS_STATE_1;
+        BOOT_STATUS_ASSERT(rc == 0);
+    }
+
+    if (bs->state == BOOT_STATUS_STATE_1) {
 //erase slot 0 X
 BOOT_LOG_ERR("erasing primary 0x%x of 0x%x", pri_off, sz);
         rc = boot_erase_region(fap_pri, pri_off, sz);
@@ -553,25 +486,10 @@ BOOT_LOG_ERR("copy secondary 0x%x -> primary 0x%x of 0x%x", sec_up_off, pri_off,
         assert(rc == 0);
 
         rc = boot_write_status(state, bs);
-        bs->state = BOOT_STATUS_STATE_1;
-        bs->state = BOOT_STATUS_STATE_0;
-        BOOT_STATUS_ASSERT(rc == 0);
-    }
-
-#if 0
-    if (bs->state == BOOT_STATUS_STATE_1) {
-        rc = boot_erase_region(fap_sec, sec_off, sz);
-        assert(rc == 0);
-
-        rc = boot_copy_region(state, fap_pri, fap_sec, pri_up_off, sec_off, sz);
-        assert(rc == 0);
-
-        rc = boot_write_status(state, bs);
         bs->idx++;
         bs->state = BOOT_STATUS_STATE_0;
         BOOT_STATUS_ASSERT(rc == 0);
     }
-#endif
 }
 
 /*
@@ -597,7 +515,6 @@ fixup_revert(const struct boot_loader_state *state, struct boot_status *bs,
 
     /* No fixup required */
     if (bs->swap_type != BOOT_SWAP_TYPE_REVERT ||
-        bs->op != BOOT_STATUS_OP_MOVE ||
         bs->idx != BOOT_STATUS_IDX_0) {
         return;
     }
@@ -680,46 +597,48 @@ BOOT_LOG_ERR("last_idx: %d", last_idx);
 
     fixup_revert(state, bs, fap_sec);
 
-boot_move_sector_up(0, sector_sz, state, bs, fap_pri, fap_sec);
-#if 0
-    if (bs->op == BOOT_STATUS_OP_MOVE) {
-        idx = last_idx;
-        while (idx > 0) {
-            if (idx <= (last_idx - bs->idx + 1)) {
-                boot_move_sector_up(idx, sector_sz, state, bs, fap_pri, fap_sec);
-            }
-            idx--;
+    /* Init areas for storing swap status */
+    if (bs->idx == BOOT_STATUS_IDX_0) {
+        int rc;
+
+        if (bs->source != BOOT_STATUS_SOURCE_PRIMARY_SLOT) {
+            rc = swap_erase_trailer_sectors(state, fap_pri);
+            assert(rc == 0);
+
+            rc = swap_status_init(state, fap_pri, bs);
+            assert(rc == 0);
         }
-        bs->idx = BOOT_STATUS_IDX_0;
-    }
-#endif
 
-//        bs->idx = BOOT_STATUS_IDX_0;
-if (bs->swap_type == BOOT_SWAP_TYPE_REVERT) {
-BOOT_LOG_ERR("\nREVERT\n from %d", last_idx);
-        bs->idx = last_idx;
+        rc = swap_erase_trailer_sectors(state, fap_sec);
+        assert(rc == 0);
+    }
+
     bs->op = BOOT_STATUS_OP_SWAP;
+    idx = 0;
 
-    idx = last_idx;
-    while (idx > 0) {
-            boot_swap_sectors_revert(idx, sector_sz, state, bs, fap_pri, fap_sec);
-        idx--;
-    }
+    if (bs->swap_type == BOOT_SWAP_TYPE_REVERT) {
+//TODO: RESUMING
+BOOT_LOG_ERR("\nREVERT\n from %d", last_idx);
+        while (idx <= last_idx) {
+            if (idx >= bs->idx) {
+                boot_swap_sectors_revert((last_idx - idx + 1), sector_sz, state, bs, fap_pri, fap_sec);
+            }
+
+            idx++;
+        }
 
         rc = boot_erase_region(fap_sec, boot_img_sector_off(state, BOOT_SECONDARY_SLOT, 0), sector_sz);
         assert(rc == 0);
-} else {
-        bs->idx = 0;
-    bs->op = BOOT_STATUS_OP_SWAP;
+    } else {
+        while (idx <= last_idx) {
+LOG_ERR("idx = %d, bs->idx = %d", idx, bs->idx);
+            if (idx >= bs->idx) {
+                boot_swap_sectors(idx, sector_sz, state, bs, fap_pri, fap_sec);
+            }
 
-    idx = 0;
-    while (idx < last_idx) {
-//        if (idx >= bs->idx) {
-            boot_swap_sectors(idx, sector_sz, state, bs, fap_pri, fap_sec);
-//        }
-        idx++;
+            idx++;
+        }
     }
-}
 
     flash_area_close(fap_pri);
     flash_area_close(fap_sec);
@@ -736,8 +655,8 @@ int app_max_size(struct boot_loader_state *state)
     sector_sz_secondary = boot_img_sector_size(state, BOOT_SECONDARY_SLOT, 0);
 
     /* Account for image flags and move sector */
-    sz_primary = app_max_sectors(state) * sector_sz_primary - sector_sz_primary;
-    sz_secondary = boot_img_num_sectors(state, BOOT_SECONDARY_SLOT) * sector_sz_secondary;
+    sz_primary = app_max_sectors(state) * sector_sz_primary;
+    sz_secondary = boot_img_num_sectors(state, BOOT_SECONDARY_SLOT) * sector_sz_secondary - sector_sz_primary;
 
     return (sz_primary <= sz_secondary ? sz_primary : sz_secondary);
 }
