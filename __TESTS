@@ -1,0 +1,1 @@
+cargo test --features "swap-offset sig-rsa validate-primary-slot" -v 

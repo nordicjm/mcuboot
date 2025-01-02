@@ -669,7 +669,11 @@ boot_status_reset(struct boot_status *bs)
     bs->swap_size = 0;
     bs->source = 0;
 
+#if defined(MCUBOOT_SWAP_USING_OFFSET)
+    bs->op = BOOT_STATUS_OP_SWAP;
+#else
     bs->op = BOOT_STATUS_OP_MOVE;
+#endif
     bs->idx = BOOT_STATUS_IDX_0;
     bs->state = BOOT_STATUS_STATE_0;
     bs->swap_type = BOOT_SWAP_TYPE_NONE;
@@ -678,7 +682,12 @@ boot_status_reset(struct boot_status *bs)
 bool
 boot_status_is_reset(const struct boot_status *bs)
 {
-    return (bs->op == BOOT_STATUS_OP_MOVE &&
+    return (
+#if defined(MCUBOOT_SWAP_USING_OFFSET)
+            bs->op == BOOT_STATUS_OP_SWAP &&
+#else
+            bs->op == BOOT_STATUS_OP_MOVE &&
+#endif
             bs->idx == BOOT_STATUS_IDX_0 &&
             bs->state == BOOT_STATUS_STATE_0);
 }
@@ -991,7 +1000,7 @@ boot_validate_slot(struct boot_loader_state *state, int slot,
     if (boot_check_header_erased(state, slot) == 0 ||
         (hdr->ih_flags & IMAGE_F_NON_BOOTABLE)) {
 
-#if defined(MCUBOOT_SWAP_USING_SCRATCH) || defined(MCUBOOT_SWAP_USING_MOVE)
+#if defined(MCUBOOT_SWAP_USING_SCRATCH) || defined(MCUBOOT_SWAP_USING_MOVE) || defined(MCUBOOT_SWAP_USING_OFFSET)
         /*
          * This fixes an issue where an image might be erased, but a trailer
          * be left behind. It can happen if the image is in the secondary slot
@@ -1024,21 +1033,25 @@ boot_validate_slot(struct boot_loader_state *state, int slot,
             /* Image in the secondary slot does not satisfy version requirement.
              * Erase the image and continue booting from the primary slot.
              */
+BOOT_LOG_ERR("!! SHIP1");
             fih_rc = FIH_NO_BOOTABLE_IMAGE;
             goto out;
         }
     }
 #endif
     if (!boot_is_header_valid(hdr, fap, state)) {
+BOOT_LOG_ERR("!! SHIP2");
         fih_rc = FIH_FAILURE;
     } else {
         BOOT_HOOK_CALL_FIH(boot_image_check_hook, FIH_BOOT_HOOK_REGULAR,
                            fih_rc, BOOT_CURR_IMG(state), slot);
         if (FIH_EQ(fih_rc, FIH_BOOT_HOOK_REGULAR)) {
             FIH_CALL(boot_image_check, fih_rc, state, hdr, fap, bs);
+BOOT_LOG_ERR("!! SHIP3");
         }
     }
     if (FIH_NOT_EQ(fih_rc, FIH_SUCCESS)) {
+BOOT_LOG_ERR("!! SHIP4");
         if ((slot != BOOT_PRIMARY_SLOT) || ARE_SLOTS_EQUIVALENT()) {
             flash_area_erase(fap, 0, flash_area_get_size(fap));
             /* Image is invalid, erase it to prevent further unnecessary
@@ -1921,7 +1934,7 @@ boot_prepare_image_for_update(struct boot_loader_state *state,
         }
 #endif
 
-#if defined(MCUBOOT_SWAP_USING_SCRATCH) || defined(MCUBOOT_SWAP_USING_MOVE)
+#if defined(MCUBOOT_SWAP_USING_SCRATCH) || defined(MCUBOOT_SWAP_USING_MOVE) || defined(MCUBOOT_SWAP_USING_OFFSET)
         /*
          * Must re-read image headers because the boot status might
          * have been updated in the previous function call.
@@ -2094,7 +2107,7 @@ static int
 check_downgrade_prevention(struct boot_loader_state *state)
 {
 #if defined(MCUBOOT_DOWNGRADE_PREVENTION) && \
-    (defined(MCUBOOT_SWAP_USING_MOVE) || defined(MCUBOOT_SWAP_USING_SCRATCH))
+    (defined(MCUBOOT_SWAP_USING_MOVE) || defined(MCUBOOT_SWAP_USING_SCRATCH) || defined(MCUBOOT_SWAP_USING_OFFSET))
     uint32_t security_counter[2];
     int rc;
 
@@ -2283,6 +2296,15 @@ context_boot_go(struct boot_loader_state *state, struct boot_rsp *rsp)
 
         /* Set the previously determined swap type */
         bs.swap_type = BOOT_SWAP_TYPE(state);
+BOOT_LOG_ERR("!! UPDATE = %d for %d", bs.swap_type, BOOT_CURR_IMG(state));
+
+if (bs.swap_type == BOOT_SWAP_TYPE_TEST) {
+BOOT_LOG_ERR("^^ test ?");
+} else if (bs.swap_type == BOOT_SWAP_TYPE_PERM) {
+BOOT_LOG_ERR("^^ perm ?");
+} else if (bs.swap_type == BOOT_SWAP_TYPE_REVERT) {
+BOOT_LOG_ERR("^^ revert ?");
+}
 
         switch (BOOT_SWAP_TYPE(state)) {
         case BOOT_SWAP_TYPE_NONE:
@@ -2363,6 +2385,7 @@ context_boot_go(struct boot_loader_state *state, struct boot_rsp *rsp)
              */
             rc = boot_read_image_headers(state, false, NULL);
             if (rc != 0) {
+BOOT_LOG_ERR("!! FLANKING ERR2");
                 FIH_SET(fih_rc, FIH_FAILURE);
                 goto out;
             }
@@ -3078,3 +3101,8 @@ const struct image_max_size *boot_get_max_app_size(void)
     return image_max_sizes;
 }
 #endif
+
+uint32_t todo_sec_off()
+{
+return boot_data.secondary_offset[BOOT_CURR_IMG(&boot_data)];
+}
