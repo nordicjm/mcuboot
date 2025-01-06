@@ -58,6 +58,11 @@
 
 #include "bootutil_priv.h"
 
+
+#include "bootutil/bootutil_log.h"
+BOOT_LOG_MODULE_DECLARE(mcuboot);
+
+
 /*
  * Compute SHA hash over the image.
  * (SHA384 if ECDSA-P384 is being used,
@@ -459,6 +464,7 @@ bootutil_img_validate(struct enc_key_data *enc_state, int image_index,
     rc = bootutil_img_hash(enc_state, image_index, hdr, fap, tmp_buf,
             tmp_buf_sz, hash, seed, seed_len);
     if (rc) {
+BOOT_LOG_ERR("valerr1");
         goto out;
     }
 
@@ -468,10 +474,12 @@ bootutil_img_validate(struct enc_key_data *enc_state, int image_index,
 
     rc = bootutil_tlv_iter_begin(&it, hdr, fap, IMAGE_TLV_ANY, false);
     if (rc) {
+BOOT_LOG_ERR("valerr2");
         goto out;
     }
 
     if (it.tlv_end > bootutil_max_image_size(fap)) {
+BOOT_LOG_ERR("valerr3");
         rc = -1;
         goto out;
     }
@@ -481,6 +489,7 @@ bootutil_img_validate(struct enc_key_data *enc_state, int image_index,
      * and are able to do.
      */
     while (true) {
+BOOT_LOG_ERR("qq");
         rc = bootutil_tlv_iter_next(&it, &off, &len, &type);
         if (rc < 0) {
             goto out;
@@ -613,11 +622,13 @@ bootutil_img_validate(struct enc_key_data *enc_state, int image_index,
         }
     }
 
+BOOT_LOG_ERR("image_hash_valid: %d", image_hash_valid);
     rc = !image_hash_valid;
     if (rc) {
         goto out;
     }
 #ifdef EXPECTED_SIG_TLV
+BOOT_LOG_ERR("valid_signature: %d", valid_signature);
     FIH_SET(fih_rc, valid_signature);
 #endif
 #ifdef MCUBOOT_HW_ROLLBACK_PROT

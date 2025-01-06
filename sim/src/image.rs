@@ -1463,6 +1463,7 @@ impl Images {
         let mut counter = stop;
         if !c::boot_go(&mut flash, &self.areadesc, Some(&mut counter), None,
                        false).interrupted() {
+println!("NO PASS1");
             warn!("Should have stopped test at interruption point");
             fails += 1;
         }
@@ -1470,11 +1471,13 @@ impl Images {
         // In a multi-image setup, copy done might be set if any number of
         // images was already successfully swapped.
         if !self.verify_trailers_loose(&flash, 0, None, None, BOOT_FLAG_UNSET) {
+println!("NO PASS2");
             warn!("copy_done should be unset");
             fails += 1;
         }
 
         if !c::boot_go(&mut flash, &self.areadesc, None, None, false).success() {
+println!("NO PASS3");
             warn!("Should have finished test upgrade");
             fails += 1;
         }
@@ -1482,21 +1485,25 @@ impl Images {
         if !self.verify_images(&flash, 0, 1) {
             warn!("Image in the primary slot before revert is invalid at stop={}",
                   stop);
+println!("NO PASS4");
             fails += 1;
         }
         if !self.verify_images(&flash, 1, 0) {
             warn!("Image in the secondary slot before revert is invalid at stop={}",
                   stop);
+println!("NO PASS5");
             fails += 1;
         }
         if !self.verify_trailers(&flash, 0, BOOT_MAGIC_GOOD,
                                  BOOT_FLAG_UNSET, BOOT_FLAG_SET) {
             warn!("Mismatched trailer for the primary slot before revert");
+println!("NO PASS6");
             fails += 1;
         }
         if !self.verify_trailers(&flash, 1, BOOT_MAGIC_UNSET,
                                 BOOT_FLAG_UNSET, BOOT_FLAG_UNSET) {
             warn!("Mismatched trailer for the secondary slot before revert");
+println!("NO PASS7");
             fails += 1;
         }
 
@@ -1504,21 +1511,25 @@ impl Images {
         let mut counter = stop;
         if !c::boot_go(&mut flash, &self.areadesc, Some(&mut counter), None,
                        false).interrupted() {
+println!("NO PASS8");
             warn!("Should have stopped revert at interruption point");
             fails += 1;
         }
 
         if !c::boot_go(&mut flash, &self.areadesc, None, None, false).success() {
+println!("NO PASS9");
             warn!("Should have finished revert upgrade");
             fails += 1;
         }
 
         if !self.verify_images(&flash, 0, 0) {
+println!("NO PASS10");
             warn!("Image in the primary slot after revert is invalid at stop={}",
                   stop);
             fails += 1;
         }
         if !self.verify_images(&flash, 1, 1) {
+println!("NO PASS11");
             warn!("Image in the secondary slot after revert is invalid at stop={}",
                   stop);
             fails += 1;
@@ -1526,25 +1537,30 @@ impl Images {
 
         if !self.verify_trailers(&flash, 0, BOOT_MAGIC_GOOD,
                                  BOOT_FLAG_SET, BOOT_FLAG_SET) {
+println!("NO PASS12");
             warn!("Mismatched trailer for the primary slot after revert");
             fails += 1;
         }
         if !self.verify_trailers(&flash, 1, BOOT_MAGIC_UNSET,
                                  BOOT_FLAG_UNSET, BOOT_FLAG_UNSET) {
+println!("NO PASS13");
             warn!("Mismatched trailer for the secondary slot after revert");
             fails += 1;
         }
 
         if !c::boot_go(&mut flash, &self.areadesc, None, None, false).success() {
+println!("NO PASS14");
             warn!("Should have finished 3rd boot");
             fails += 1;
         }
 
         if !self.verify_images(&flash, 0, 0) {
+println!("NO PASS15");
             warn!("Image in the primary slot is invalid on 1st boot after revert");
             fails += 1;
         }
         if !self.verify_images(&flash, 1, 1) {
+println!("NO PASS16");
             warn!("Image in the secondary slot is invalid on 1st boot after revert");
             fails += 1;
         }
@@ -1734,11 +1750,13 @@ fn tralier_estimation(dev: &dyn Flash) -> usize {
 fn image_largest_trailer(dev: &dyn Flash) -> usize {
             // Using the header size we know, the trailer size, and the slot size, we can compute
             // the largest image possible.
+//            let trailer = if Caps::OverwriteUpgrade.present() || Caps::SwapUsingOffset.present() {
             let trailer = if Caps::OverwriteUpgrade.present() {
                 // This computation is incorrect, and we need to figure out the correct size.
                 // c::boot_status_sz(dev.align() as u32) as usize
                 16 + 4 * dev.align()
             } else if Caps::SwapUsingOffset.present() || Caps::SwapUsingMove.present() {
+//            } else if Caps::SwapUsingMove.present() {
                 let sector_size = dev.sector_iter().next().unwrap().size as u32;
                 align_up(c::boot_trailer_sz(dev.align() as u32), sector_size) as usize
             } else if Caps::SwapUsingScratch.present() {
@@ -2054,13 +2072,28 @@ fn verify_image(flash: &SimMultiFlash, slot: &SlotInfo, images: &ImageData) -> b
     let dev_id = slot.dev_id;
 
     let mut copy = vec![0u8; buf.len()];
+    let mut copy2 = vec![0u8; buf.len()];
     let offset = slot.base_off;
+    let offset2 = slot.base_off + 0x1000;
     let dev = flash.get(&dev_id).unwrap();
-    dev.read(offset, &mut copy).unwrap();
 
-    if buf != &copy[..] {
+//    if Caps::SwapUsingOffset.present() && (slot.index % 2) == 1 {
+//        let sector_size = dev.sector_iter().next().unwrap().size as usize;
+//        offset += sector_size;
+//println!("we at {} from {}\n", offset, sector_size);
+//    dev.read(offset, &mut copy).unwrap();
+//    } else {
+    dev.read(offset, &mut copy).unwrap();
+    dev.read(offset2, &mut copy2).unwrap();
+//}
+//println!("size is {}", buf.len());
+
+
+    if buf != &copy[..] && buf != &copy2[..] {
         for i in 0 .. buf.len() {
             if buf[i] != copy[i] {
+                println!("First failure for slot{} at {:#x} ({:#x} within) {:#x}!={:#x} {:#x}",
+                      slot.index, offset + i, i, buf[i], copy[i], copy2[i]);
                 info!("First failure for slot{} at {:#x} ({:#x} within) {:#x}!={:#x}",
                       slot.index, offset + i, i, buf[i], copy[i]);
                 break;

@@ -25,6 +25,9 @@
 #include "bootutil/image.h"
 #include "bootutil_priv.h"
 
+#include "bootutil/bootutil_log.h"
+BOOT_LOG_MODULE_DECLARE(mcuboot);
+
 /*
  * Initialize a TLV iterator.
  *
@@ -107,6 +110,17 @@ bootutil_tlv_iter_begin(struct image_tlv_iter *it, const struct image_header *hd
         }
 
         if (info.it_magic != IMAGE_TLV_INFO_MAGIC) {
+
+        if (LOAD_IMAGE_DATA(hdr, fap, off_, &info, sizeof(info))) {
+            return -1;
+        }
+BOOT_LOG_ERR("second: %x (%d)", info.it_magic, off_);
+        if (LOAD_IMAGE_DATA(hdr, fap, BOOT_TLV_OFF(hdr), &info, sizeof(info))) {
+            return -1;
+        }
+BOOT_LOG_ERR("first: %x (%d)", info.it_magic, BOOT_TLV_OFF(hdr));
+BOOT_LOG_ERR("dets: %d %d %d", hdr->ih_hdr_size, hdr->ih_protect_tlv_size, hdr->ih_img_size);
+
             return -1;
         }
 #else
