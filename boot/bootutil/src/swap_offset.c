@@ -17,6 +17,7 @@
  * limitations under the License.
  */
 
+//#include <zephyr/kernel.h>
 #include <stddef.h>
 #include <stdbool.h>
 #include <inttypes.h>
@@ -84,14 +85,30 @@ int boot_read_image_header(struct boot_loader_state *state, int slot,
     (void)state;
 #endif
 
+    if (bs == NULL) {
+BOOT_LOG_ERR("wtf? BS NOT VALID slot %d", slot);
+}
+// boot_validated_swap_type(state, bs));
+
     off = 0;
-    if (bs && !boot_status_is_reset(bs)) {
+    if (bs /*&& !boot_status_is_reset(bs)*/) {
+
+BOOT_LOG_ERR("wtf? %d %d %d %d slot %d", bs->op, bs->idx, bs->state, bs->swap_type, slot);
+//1 1 1 0
+//swap, default, BOOT_STATUS_STATE_0, ?
+
+//1 5 1 4 0
+//swap, sector 4, BOOT_STATUS_STATE_0, revert
+
+    if (!boot_status_is_reset(bs)) {
         boot_find_status(BOOT_CURR_IMG(state), &fap);
 
         if (fap == NULL || boot_read_swap_size(fap, &swap_size)) {
             rc = BOOT_EFLASH;
             goto done;
         }
+
+BOOT_LOG_ERR("we read status, swap size = %d", swap_size);
 
         flash_area_close(fap);
         last_idx = find_last_idx(state, swap_size);
@@ -101,7 +118,64 @@ int boot_read_image_header(struct boot_loader_state *state, int slot,
          * Find the correct offset or slot where the image header is expected to
          * be found for the steps where it is moved or swapped.
          */
-        if (bs->op == BOOT_STATUS_OP_SWAP) {
+
+//BOOT_LOG_ERR("is %d", bs->swap_type);
+        if (bs->swap_type == BOOT_SWAP_TYPE_REVERT) {
+//BELOW LOOKS WRONG
+BOOT_LOG_ERR("revert idx = %d (%d), state = %d, last_idx = %d", bs->idx, (last_idx), bs->state, last_idx);
+            if (slot == 0) {
+//                if ((bs->idx > (last_idx - BOOT_STATUS_IDX_0) || 
+//(bs->idx == (last_idx - BOOT_STATUS_IDX_0) && bs->state == BOOT_STATUS_STATE_1)) && bs->idx <= last_idx) {
+                if ((bs->idx > (last_idx) || 
+(bs->idx == (last_idx) && bs->state == BOOT_STATUS_STATE_1)) && bs->idx <= last_idx) {
+                    slot = 1;
+                    off = 0;
+BOOT_LOG_ERR("aa1 slot = 1, off = 0");
+                } else {
+                    slot = 0;
+                    off = 0;
+BOOT_LOG_ERR("aa2 slot = 0, off = 0");
+                }
+            } else if (slot == 1) {
+//                if (bs->idx > (last_idx - BOOT_STATUS_IDX_0)) {
+                if (bs->idx > (last_idx)) {
+                    slot = 1;
+                    off = sz;
+BOOT_LOG_ERR("aa3 slot = 1, off = %d", sz);
+                } else {
+                    slot = 0;
+                    off = 0;
+BOOT_LOG_ERR("aa4 slot = 0, off = 0");
+                }
+            }
+        } else {
+//below only works if not in revert
+BOOT_LOG_ERR("update idx = %d, state = %d, last_idx = %d", bs->idx, bs->state, last_idx);
+            if (slot == 0) {
+                if ((bs->idx > BOOT_STATUS_IDX_0 || (bs->idx == BOOT_STATUS_IDX_0 && bs->state == BOOT_STATUS_STATE_1)) && bs->idx <= last_idx) {
+                    slot = 1;
+                    off = 0;
+BOOT_LOG_ERR("bb1 slot = 1, off = 0");
+                } else {
+                    slot = 0;
+                    off = 0;
+BOOT_LOG_ERR("bb2 slot = 0, off = 0");
+                }
+            } else if (slot == 1) {
+                if (bs->idx > BOOT_STATUS_IDX_0) {
+                    slot = 0;
+                    off = 0;
+BOOT_LOG_ERR("bb3 slot = 0, off = 0");
+                } else {
+                    slot = 1;
+                    off = sz;
+BOOT_LOG_ERR("bb4 slot = 1, off = %d", sz);
+                }
+            }
+        }
+}
+
+#if 0
             if (bs->idx > BOOT_STATUS_IDX_0 && bs->idx <= last_idx) {
                 slot = (slot == 0) ? 1 : 0;
             } else if (bs->idx == BOOT_STATUS_IDX_0) {
@@ -111,7 +185,8 @@ int boot_read_image_header(struct boot_loader_state *state, int slot,
                     slot = 0;
                 }
             }
-        }
+#endif
+//        }
     }
 
     area_id = flash_area_id_from_multi_image_slot(BOOT_CURR_IMG(state), slot);
@@ -121,15 +196,24 @@ int boot_read_image_header(struct boot_loader_state *state, int slot,
         goto done;
     }
 
+#if 0
+    if ((bs == NULL || boot_status_is_reset(bs)) && (slot % 2) == 1) {
+}
+#endif
+
     rc = flash_area_read(fap, off, out_hdr, sizeof *out_hdr);
     if (rc != 0) {
         rc = BOOT_EFLASH;
         goto done;
     }
 
+//BOOT_LOG_ERR("magic: %d", out_hdr->ih_magic);
+
     if (out_hdr->ih_magic != IMAGE_MAGIC) {
         /* Check in the secondary position in the upgrade slot */
-        if ((slot % 2) == 1) {
+#if 1
+if (bs == NULL || bs->swap_type == BOOT_SWAP_TYPE_NONE)
+{
             off += boot_img_sector_size(state, BOOT_SECONDARY_SLOT, 0);
 
             rc = flash_area_read(fap, off, out_hdr, sizeof *out_hdr);
@@ -137,7 +221,8 @@ int boot_read_image_header(struct boot_loader_state *state, int slot,
                 rc = BOOT_EFLASH;
                 goto done;
             }
-        }
+}
+#endif
 
         /* We only know where the headers are located when bs is valid */
         if (bs != NULL && out_hdr->ih_magic != IMAGE_MAGIC) {
@@ -393,6 +478,7 @@ static void boot_swap_sectors(int idx, uint32_t sz, struct boot_loader_state *st
     sec_up_off = boot_img_sector_off(state, BOOT_PRIMARY_SLOT, (idx + 1));
 
     if (bs->state == BOOT_STATUS_STATE_0) {
+BOOT_LOG_ERR("~~ UPDATE state 0 pri 0x%x -> sec 0x%x", pri_off, sec_off);
         /* Copy from slot 0 X to slot 1 X */
         if (skip_primary == true) {
             BOOT_LOG_DBG("Skipping erase of secondary 0x%x and copy from primary 0x%x", sec_off,
@@ -411,8 +497,10 @@ static void boot_swap_sectors(int idx, uint32_t sz, struct boot_loader_state *st
         bs->state = BOOT_STATUS_STATE_1;
         BOOT_STATUS_ASSERT(rc == 0);
     }
+//k_sleep(K_MSEC(500));
 
     if (bs->state == BOOT_STATUS_STATE_1) {
+BOOT_LOG_ERR("~~ UPDATE state 1 sec 0x%x -> pri 0x%x", sec_up_off, pri_off);
         /* Erase slot 0 X */
         if (skip_secondary == true) {
             BOOT_LOG_DBG("Skipping erase of primary 0x%x and copy from secondary 0x%x", pri_off,
@@ -434,6 +522,7 @@ static void boot_swap_sectors(int idx, uint32_t sz, struct boot_loader_state *st
         bs->state = BOOT_STATUS_STATE_0;
         BOOT_STATUS_ASSERT(rc == 0);
     }
+//k_sleep(K_MSEC(500));
 }
 
 static void boot_swap_sectors_revert(int idx, uint32_t sz, struct boot_loader_state *state,
@@ -451,6 +540,7 @@ static void boot_swap_sectors_revert(int idx, uint32_t sz, struct boot_loader_st
     sec_up_off = boot_img_sector_off(state, BOOT_PRIMARY_SLOT, idx);
 
     if (bs->state == BOOT_STATUS_STATE_0) {
+BOOT_LOG_ERR("~~ REVERT state 0 pri 0x%x -> sec 0x%x", pri_off, sec_off);
         if (skip_primary == true) {
             BOOT_LOG_DBG("Skipping erase of secondary 0x%x and copy from primary 0x%x", sec_off,
                          pri_off);
@@ -469,8 +559,10 @@ static void boot_swap_sectors_revert(int idx, uint32_t sz, struct boot_loader_st
         bs->state = BOOT_STATUS_STATE_1;
         BOOT_STATUS_ASSERT(rc == 0);
     }
+//k_sleep(K_MSEC(500));
 
     if (bs->state == BOOT_STATUS_STATE_1) {
+BOOT_LOG_ERR("~~ REVERT state 1 sec 0x%x -> pri 0x%x", sec_up_off, pri_off);
         if (skip_secondary == true) {
             BOOT_LOG_DBG("Skipping erase of primary 0x%x and copy from secondary 0x%x", pri_off,
                          sec_up_off);
@@ -492,6 +584,7 @@ static void boot_swap_sectors_revert(int idx, uint32_t sz, struct boot_loader_st
         bs->state = BOOT_STATUS_STATE_0;
         BOOT_STATUS_ASSERT(rc == 0);
     }
+//k_sleep(K_MSEC(500));
 }
 
 /*
@@ -624,15 +717,23 @@ void swap_run(struct boot_loader_state *state, struct boot_status *bs,
         state->imgs[BOOT_CURR_IMG(state)][BOOT_SECONDARY_SLOT].hdr.ih_img_size) + sector_sz - 1) /
         sector_sz;
 
+used_sectors_pri = 100;
+used_sectors_sec = 100;
+
     if (bs->swap_type == BOOT_SWAP_TYPE_REVERT) {
+BOOT_LOG_ERR("CHECK1 %d vs %d", idx, last_idx);
+
         while (idx <= last_idx) {
-            if (idx >= bs->idx) {
+            if (idx >= (bs->idx - BOOT_STATUS_IDX_0)) {
                 uint32_t mirror_idx = last_idx - idx;
 
                 boot_swap_sectors_revert(mirror_idx, sector_sz, state, bs, fap_pri, fap_sec,
                                          (mirror_idx > used_sectors_pri ? true : false),
                                          (mirror_idx > used_sectors_sec ? true : false));
             }
+else {
+BOOT_LOG_ERR("SKIP1 %d vs %d", idx, bs->idx);
+}
 
             idx++;
         }
@@ -647,6 +748,9 @@ void swap_run(struct boot_loader_state *state, struct boot_status *bs,
                                   (idx > used_sectors_pri ? true : false),
                                   (idx > used_sectors_sec ? true : false));
             }
+else {
+BOOT_LOG_ERR("SKIP2 %d vs %d", idx, bs->idx);
+}
 
             idx++;
         }
@@ -683,6 +787,7 @@ int boot_read_image_size(struct boot_loader_state *state, int slot, uint32_t *si
     const struct flash_area *fap;
     struct image_tlv_info info;
     uint32_t off;
+    uint32_t secondary_slot_off = 0;
     uint32_t protect_tlv_size;
     int area_id;
     int rc;
@@ -690,6 +795,9 @@ int boot_read_image_size(struct boot_loader_state *state, int slot, uint32_t *si
 #if (BOOT_IMAGE_NUMBER == 1)
     (void)state;
 #endif
+
+BOOT_LOG_ERR("wtf2? %d slot %d", slot, BOOT_SWAP_TYPE(state));
+//BOOT_SWAP_TYPE_REVERT
 
     area_id = flash_area_id_from_multi_image_slot(BOOT_CURR_IMG(state), slot);
     rc = flash_area_open(area_id, &fap);
@@ -708,14 +816,19 @@ int boot_read_image_size(struct boot_loader_state *state, int slot, uint32_t *si
     if (info.it_magic != IMAGE_TLV_INFO_MAGIC && info.it_magic != IMAGE_TLV_PROT_INFO_MAGIC) {
         /* Check in the secondary position in the upgrade slot */
         if (slot == BOOT_SECONDARY_SLOT) {
-            off += boot_img_sector_size(state, BOOT_SECONDARY_SLOT, 0);
+BOOT_LOG_ERR("Moved!");
+            secondary_slot_off = boot_img_sector_size(state, BOOT_SECONDARY_SLOT, 0);
 
-            if (flash_area_read(fap, off, &info, sizeof(info))) {
+            if (flash_area_read(fap, off + secondary_slot_off, &info, sizeof(info))) {
                 rc = BOOT_EFLASH;
                 goto done;
             }
         }
     }
+else if ((slot % 2) == 1)
+{
+BOOT_LOG_ERR("Unmoved!");
+}
 
     protect_tlv_size = boot_img_hdr(state, slot)->ih_protect_tlv_size;
     if (info.it_magic == IMAGE_TLV_PROT_INFO_MAGIC) {
@@ -724,7 +837,7 @@ int boot_read_image_size(struct boot_loader_state *state, int slot, uint32_t *si
             goto done;
         }
 
-        if (flash_area_read(fap, off + info.it_tlv_tot, &info, sizeof(info))) {
+        if (flash_area_read(fap, off + secondary_slot_off + info.it_tlv_tot, &info, sizeof(info))) {
             rc = BOOT_EFLASH;
             goto done;
         }

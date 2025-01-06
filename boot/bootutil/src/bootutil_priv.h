@@ -81,8 +81,12 @@ struct flash_area;
 #define MCUBOOT_SWAP_USING_SCRATCH 1
 #endif
 
+#if defined(MCUBOOT_SWAP_USING_OFFSET)
+#define BOOT_STATUS_OP_SWAP     1
+#else
 #define BOOT_STATUS_OP_MOVE     1
 #define BOOT_STATUS_OP_SWAP     2
+#endif
 
 /*
  * Maintain state of copy progress.
