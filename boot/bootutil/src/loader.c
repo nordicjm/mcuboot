@@ -1650,6 +1650,8 @@ boot_swap_image(struct boot_loader_state *state, struct boot_status *bs)
         flash_area_close(fap);
     }
 
+BOOT_LOG_ERR("HAM AND CHEESE");
+
     swap_run(state, bs, copy_size);
 
 #ifdef MCUBOOT_VALIDATE_PRIMARY_SLOT
@@ -1681,6 +1683,8 @@ boot_perform_update(struct boot_loader_state *state, struct boot_status *bs)
 #ifndef MCUBOOT_OVERWRITE_ONLY
     uint8_t swap_type;
 #endif
+
+BOOT_LOG_ERR("** why?");
 
     /* At this point there are no aborted swaps. */
 #if defined(MCUBOOT_OVERWRITE_ONLY)
@@ -2296,7 +2300,7 @@ context_boot_go(struct boot_loader_state *state, struct boot_rsp *rsp)
 
         /* Set the previously determined swap type */
         bs.swap_type = BOOT_SWAP_TYPE(state);
-BOOT_LOG_ERR("!! UPDATE = %d", bs.swap_type);
+BOOT_LOG_ERR("!! UPDATE = %d for %d", bs.swap_type, BOOT_CURR_IMG(state));
 
         switch (BOOT_SWAP_TYPE(state)) {
         case BOOT_SWAP_TYPE_NONE:
@@ -2310,8 +2314,10 @@ BOOT_LOG_ERR("!! UPDATE = %d", bs.swap_type);
                 BOOT_SWAP_TYPE(state) = BOOT_SWAP_TYPE_NONE;
                 break;
             }
+BOOT_LOG_ERR("^^ perm ?");
             /* fallthrough */
         case BOOT_SWAP_TYPE_REVERT:
+BOOT_LOG_ERR("^^ revert ?");
             rc = BOOT_HOOK_CALL(boot_perform_update_hook, BOOT_HOOK_REGULAR,
                                 BOOT_CURR_IMG(state), &(BOOT_IMG(state, 1).hdr),
                                 BOOT_IMG_AREA(state, BOOT_SECONDARY_SLOT));

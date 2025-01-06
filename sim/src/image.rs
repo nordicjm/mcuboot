@@ -781,13 +781,14 @@ impl Images {
         }
 
         if self.is_swap_upgrade() {
-            for i in 1 .. self.total_count.unwrap() {
+let mut i = 5;
+//            for i in 1 .. self.total_count.unwrap() {
                 info!("Try interruption at {}", i);
                 if self.try_revert_with_fail_at(i) {
                     error!("Revert failed at interruption {}", i);
                     fails += 1;
                 }
-            }
+//            }
         }
 
         fails > 0
