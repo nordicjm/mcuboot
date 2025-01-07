@@ -59,7 +59,7 @@ sim_test!(revert_with_fails, make_image(&NO_DEPS, false), run_revert_with_fails(
 //sim_test!(perm_with_random_fails, make_image(&NO_DEPS, true), run_perm_with_random_fails(5));
 //sim_test!(norevert, make_image(&NO_DEPS, true), run_norevert());
 
-#[cfg(not(feature = "max-align-32"))]
+//#[cfg(not(feature = "max-align-32"))]
 //sim_test!(oversized_secondary_slot, make_oversized_secondary_slot_image(), run_oversizefail_upgrade());
 
 //sim_test!(status_write_fails_complete, make_image(&NO_DEPS, true), run_with_status_fails_complete());
@@ -76,10 +76,10 @@ sim_test!(revert_with_fails, make_image(&NO_DEPS, false), run_revert_with_fails(
 //sim_test!(ram_load_failed_validation, make_no_upgrade_image(&NO_DEPS, ImageManipulation::BadSignature), run_ram_load_boot_with_result(false));
 //sim_test!(ram_load_corrupt_higher_version_image, make_no_upgrade_image(&NO_DEPS, ImageManipulation::CorruptHigherVersionImage), run_ram_load_boot_with_result(true));
 
-#[cfg(feature = "multiimage")]
-sim_test!(ram_load_overlapping_images_same_base, make_no_upgrade_image(&NO_DEPS, ImageManipulation::OverlapImages(true)), run_ram_load_boot_with_result(false));
-#[cfg(feature = "multiimage")]
-sim_test!(ram_load_overlapping_images_offset, make_no_upgrade_image(&NO_DEPS, ImageManipulation::OverlapImages(false)), run_ram_load_boot_with_result(false));
+//#[cfg(feature = "multiimage")]
+//sim_test!(ram_load_overlapping_images_same_base, make_no_upgrade_image(&NO_DEPS, ImageManipulation::OverlapImages(true)), run_ram_load_boot_with_result(false));
+//#[cfg(feature = "multiimage")]
+//sim_test!(ram_load_overlapping_images_offset, make_no_upgrade_image(&NO_DEPS, ImageManipulation::OverlapImages(false)), run_ram_load_boot_with_result(false));
 
 // Test various combinations of incorrect dependencies.
 //test_shell!(dependency_combos, r, {

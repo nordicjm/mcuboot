@@ -275,6 +275,7 @@ int invoke_boot_go(struct sim_context *ctx, struct area_desc *adesc,
         (void) image_id;
 #endif /* BOOT_IMAGE_NUMBER > 1 */
 
+        printf("$$ RUNNING BOOT_GO\n");
         res = context_boot_go(state, rsp);
         sim_reset_flash_areas();
         sim_reset_context();
@@ -340,6 +341,7 @@ int flash_area_read(const struct flash_area *area, uint32_t off, void *dst,
 {
     BOOT_LOG_SIM("%s: area=%d, off=%x, len=%x",
                  __func__, area->fa_id, off, len);
+//BOOT_LOG_ERR("read 0x%x for %d", (area->fa_off + off), len);
     return sim_flash_read(area->fa_device_id, area->fa_off + off, dst, len);
 }
 
@@ -349,7 +351,7 @@ int flash_area_write(const struct flash_area *area, uint32_t off, const void *sr
     BOOT_LOG_SIM("%s: area=%d, off=%x, len=%x", __func__,
                  area->fa_id, off, len);
     struct sim_context *ctx = sim_get_context();
-BOOT_LOG_ERR("write 0x%x for %d", (area->fa_off + off), len);
+//BOOT_LOG_ERR("write 0x%x for %d", (area->fa_off + off), len);
     if (--(ctx->flash_counter) == 0) {
 BOOT_LOG_ERR("jmp?");
         ctx->jumped++;
@@ -363,7 +365,7 @@ int flash_area_erase(const struct flash_area *area, uint32_t off, uint32_t len)
     BOOT_LOG_SIM("%s: area=%d, off=%x, len=%x", __func__,
                  area->fa_id, off, len);
     struct sim_context *ctx = sim_get_context();
-BOOT_LOG_ERR("erase 0x%x for %d", (area->fa_off + off), len);
+//BOOT_LOG_ERR("erase 0x%x for %d", (area->fa_off + off), len);
     if (--(ctx->flash_counter) == 0) {
 BOOT_LOG_ERR("jmp?");
         ctx->jumped++;

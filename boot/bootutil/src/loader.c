@@ -2302,6 +2302,14 @@ context_boot_go(struct boot_loader_state *state, struct boot_rsp *rsp)
         bs.swap_type = BOOT_SWAP_TYPE(state);
 BOOT_LOG_ERR("!! UPDATE = %d for %d", bs.swap_type, BOOT_CURR_IMG(state));
 
+if (bs.swap_type == BOOT_SWAP_TYPE_TEST) {
+BOOT_LOG_ERR("^^ test ?");
+} else if (bs.swap_type == BOOT_SWAP_TYPE_PERM) {
+BOOT_LOG_ERR("^^ perm ?");
+} else if (bs.swap_type == BOOT_SWAP_TYPE_REVERT) {
+BOOT_LOG_ERR("^^ revert ?");
+}
+
         switch (BOOT_SWAP_TYPE(state)) {
         case BOOT_SWAP_TYPE_NONE:
             break;
@@ -2314,10 +2322,8 @@ BOOT_LOG_ERR("!! UPDATE = %d for %d", bs.swap_type, BOOT_CURR_IMG(state));
                 BOOT_SWAP_TYPE(state) = BOOT_SWAP_TYPE_NONE;
                 break;
             }
-BOOT_LOG_ERR("^^ perm ?");
             /* fallthrough */
         case BOOT_SWAP_TYPE_REVERT:
-BOOT_LOG_ERR("^^ revert ?");
             rc = BOOT_HOOK_CALL(boot_perform_update_hook, BOOT_HOOK_REGULAR,
                                 BOOT_CURR_IMG(state), &(BOOT_IMG(state, 1).hdr),
                                 BOOT_IMG_AREA(state, BOOT_SECONDARY_SLOT));
@@ -3099,3 +3105,8 @@ const struct image_max_size *boot_get_max_app_size(void)
     return image_max_sizes;
 }
 #endif
+
+uint32_t todo_sec_off()
+{
+return boot_data.secondary_offset[BOOT_CURR_IMG(&boot_data)];
+}

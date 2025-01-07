@@ -114,13 +114,29 @@ bootutil_img_hash(struct enc_key_data *enc_state, int image_index,
 #if defined(MCUBOOT_SWAP_USING_OFFSET)
     if (flash_area_get_id(fap) == FLASH_AREA_IMAGE_SECONDARY(image_index))
     {
-        int swap_type = boot_swap_type_multi(image_index);
+blk_sz = sizeof(struct image_header);
+
+if (blk_sz > tmp_buf_sz) {
+blk_sz = tmp_buf_sz;
+}
+
+        rc = flash_area_read(fap, 0, tmp_buf, blk_sz);
+        if (rc) {
+            return rc;
+        }
+
+if (memcmp(tmp_buf, hdr, blk_sz) != 0) {
+
+//        int swap_type = boot_swap_type_multi(image_index);
+
+//check if first sector is erased, erased = use second, not erased = use first
+//fuck
 
         /* For swap using offset mode, the image starts in the second sector of the upgrade slot,
          * so apply the offset when this is needed
          */
-        if (swap_type == BOOT_SWAP_TYPE_TEST || swap_type == BOOT_SWAP_TYPE_PERM)
-        {
+//        if (swap_type == BOOT_SWAP_TYPE_TEST || swap_type == BOOT_SWAP_TYPE_PERM)
+//        {
 #if defined(MCUBOOT_USE_FLASH_AREA_GET_SECTORS)
             uint32_t num_sectors = 1;
             boot_sector_t sector_data;
@@ -528,6 +544,15 @@ BOOT_LOG_ERR("qq");
             if (rc) {
                 goto out;
             }
+
+if (flash_area_get_id(fap) == FLASH_AREA_IMAGE_SECONDARY(image_index)) {
+BOOT_LOG_ERR("SECONDARY:");
+} else {
+BOOT_LOG_ERR("PRIMARY:");
+}
+
+BOOT_LOG_ERR("%02x%02x%02x%02x...%02x%02x%02x%02x", hash[0], hash[1], hash[2], hash[3], hash[sizeof(hash)-4], hash[sizeof(hash)-3], hash[sizeof(hash)-2], hash[sizeof(hash)-1]);
+BOOT_LOG_ERR("addr %x", off);
 
             FIH_CALL(boot_fih_memequal, fih_rc, hash, buf, sizeof(hash));
             if (FIH_NOT_EQ(fih_rc, FIH_SUCCESS)) {

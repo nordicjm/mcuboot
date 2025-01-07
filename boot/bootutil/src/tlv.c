@@ -53,19 +53,23 @@ bootutil_tlv_iter_begin(struct image_tlv_iter *it, const struct image_header *hd
 
     off_ = BOOT_TLV_OFF(hdr);
     if (LOAD_IMAGE_DATA(hdr, fap, off_, &info, sizeof(info))) {
+BOOT_LOG_ERR("oo1");
         return -1;
     }
 
     if (info.it_magic == IMAGE_TLV_PROT_INFO_MAGIC) {
         if (hdr->ih_protect_tlv_size != info.it_tlv_tot) {
+BOOT_LOG_ERR("oo2");
             return -1;
         }
 
         if (LOAD_IMAGE_DATA(hdr, fap, off_ + info.it_tlv_tot,
                             &info, sizeof(info))) {
+BOOT_LOG_ERR("oo3");
             return -1;
         }
     } else if (hdr->ih_protect_tlv_size != 0) {
+BOOT_LOG_ERR("oo4");
         return -1;
     }
 
@@ -75,6 +79,7 @@ bootutil_tlv_iter_begin(struct image_tlv_iter *it, const struct image_header *hd
         uint32_t num_sectors = 1;
         boot_sector_t sector_data;
         int rc;
+BOOT_LOG_ERR("oo5 %x at %d", info.it_magic, off_);
 
         /* For swap using offset mode, the image starts in the second sector of the upgrade slot,
          * so apply the offset when this is needed, do this by getting information on first
@@ -96,6 +101,7 @@ bootutil_tlv_iter_begin(struct image_tlv_iter *it, const struct image_header *hd
             return -1;
         }
 
+BOOT_LOG_ERR("oo5b %x", info.it_magic);
         if (info.it_magic == IMAGE_TLV_PROT_INFO_MAGIC) {
             if (hdr->ih_protect_tlv_size != info.it_tlv_tot) {
                 return -1;
@@ -127,6 +133,8 @@ BOOT_LOG_ERR("dets: %d %d %d", hdr->ih_hdr_size, hdr->ih_protect_tlv_size, hdr->
         return -1;
 #endif
     }
+
+BOOT_LOG_ERR(".. OFF = %x", off_);
 
     it->hdr = hdr;
     it->fap = fap;
