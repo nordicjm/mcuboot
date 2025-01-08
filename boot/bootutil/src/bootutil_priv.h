@@ -249,10 +249,10 @@ struct boot_loader_state {
 
     uint8_t swap_type[BOOT_IMAGE_NUMBER];
     uint32_t write_sz;
-#if defined(MCUBOOT_SWAP_USING_OFFSET)
-uint32_t secondary_offset[BOOT_IMAGE_NUMBER];
-#endif
 
+#if defined(MCUBOOT_SWAP_USING_OFFSET)
+    uint32_t secondary_offset[BOOT_IMAGE_NUMBER];
+#endif
 
 #if defined(MCUBOOT_ENC_IMAGES)
     struct enc_key_data enc[BOOT_IMAGE_NUMBER][BOOT_NUM_SLOTS];

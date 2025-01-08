@@ -17,7 +17,6 @@
  * limitations under the License.
  */
 
-//#include <zephyr/kernel.h>
 #include <stddef.h>
 #include <stdbool.h>
 #include <inttypes.h>
@@ -88,17 +87,17 @@ bool flah = true;
     (void)state;
 #endif
 
+BOOT_LOG_ERR("bs = %p", bs);
+
     if (bs == NULL) {
         area_id = flash_area_id_from_multi_image_slot(BOOT_CURR_IMG(state), slot);
-if (slot == BOOT_SECONDARY_SLOT) {
+
+        if (slot == BOOT_SECONDARY_SLOT) {
             off = boot_img_sector_size(state, BOOT_SECONDARY_SLOT, 0);
-}
+        }
     } else {
 //////////////////////
-
 BOOT_LOG_ERR("bs: %d, %d, %d, %d, %d, %d", bs->idx, bs->state, bs->op, bs->swap_type, bs->swap_size, bs->source);
-
-
         if (!boot_status_is_reset(bs)) {
 flah = false;
             boot_find_status(BOOT_CURR_IMG(state), &fap);
@@ -121,7 +120,8 @@ BOOT_LOG_ERR("we read status, swap size = %d", swap_size);
             if (bs->swap_type == BOOT_SWAP_TYPE_REVERT || boot_swap_type_multi(BOOT_CURR_IMG(state)) == BOOT_SWAP_TYPE_REVERT) {
 BOOT_LOG_ERR("revert idx = %d (%d), state = %d, last_idx = %d", bs->idx, (last_idx), bs->state, last_idx);
                 if (slot == 0) {
-                    if ((bs->idx > (last_idx) || (bs->idx == (last_idx) && bs->state == BOOT_STATUS_STATE_1)) && bs->idx <= last_idx) {
+                    if (((bs->idx - BOOT_STATUS_IDX_0) > (last_idx) || 
+((bs->idx - BOOT_STATUS_IDX_0) == (last_idx) && bs->state == BOOT_STATUS_STATE_1)) /*&& (bs->idx - 1) <= last_idx*/) {
                         slot = 1;
                         off = 0;
 BOOT_LOG_ERR("aa1 slot = 1, off = 0");
@@ -131,7 +131,8 @@ BOOT_LOG_ERR("aa1 slot = 1, off = 0");
 BOOT_LOG_ERR("aa2 slot = 0, off = 0");
                     }
                 } else if (slot == 1) {
-                    if (bs->idx > (last_idx)) {
+BOOT_LOG_ERR("bs->idx = %d, last_idx = %d, bs->state = %d", bs->idx, last_idx, bs->state);
+                    if ((bs->idx - BOOT_STATUS_IDX_0) > (last_idx) || ((bs->idx - BOOT_STATUS_IDX_0) == last_idx && bs->state == BOOT_STATUS_STATE_1)) {
                         slot = 1;
                         off = sz;
 BOOT_LOG_ERR("aa3 slot = 1, off = %d", sz);
@@ -167,15 +168,13 @@ BOOT_LOG_ERR("bb4 slot = 1, off = %d", sz);
             }
 
             area_id = flash_area_id_from_multi_image_slot(BOOT_CURR_IMG(state), slot);
-        }
-else
-{
-        area_id = flash_area_id_from_multi_image_slot(BOOT_CURR_IMG(state), slot);
+        } else {
+            area_id = flash_area_id_from_multi_image_slot(BOOT_CURR_IMG(state), slot);
 
-if (slot == BOOT_SECONDARY_SLOT) {
-            off = boot_img_sector_size(state, BOOT_SECONDARY_SLOT, 0);
-}
-}
+            if (slot == BOOT_SECONDARY_SLOT) {
+                off = boot_img_sector_size(state, BOOT_SECONDARY_SLOT, 0);
+            }
+        }
     }
 
 
@@ -207,6 +206,8 @@ if bs is null, read original headers only
 if bs is not null, read slots correctly i.e. primary header in primary or secondary slot
 */
 
+BOOT_LOG_ERR("flah = %d, magic = %x", flah, out_hdr->ih_magic);
+
         if (flah == true && out_hdr->ih_magic != IMAGE_MAGIC && slot == BOOT_SECONDARY_SLOT) {
 off = 0;
             rc = flash_area_read(fap, off, out_hdr, sizeof *out_hdr);
@@ -219,6 +220,11 @@ off = 0;
 BOOT_LOG_ERR("slot: %d, area_id: %d, off: %d", slot, area_id, off);
 
         if (out_hdr->ih_magic == IMAGE_MAGIC) {
+
+if (bs != NULL && slot == BOOT_SECONDARY_SLOT) {
+state->secondary_offset[BOOT_CURR_IMG(&boot_data)] = off;
+}
+
 BOOT_LOG_ERR("hdr.valid");
 } else {
 BOOT_LOG_ERR("hdr.invalid");
@@ -229,325 +235,6 @@ BOOT_LOG_ERR("hdr.invalid");
             rc = -1;
             goto done;
         }
-
-    rc = 0;
-
-done:
-    flash_area_close(fap);
-    return rc;
-}
-
-int boot_read_image_header_BK(struct boot_loader_state *state, int slot,
-                           struct image_header *out_hdr, struct boot_status *bs)
-{
-    const struct flash_area *fap;
-    uint32_t off;
-    uint32_t sz;
-    uint32_t last_idx;
-    uint32_t swap_size;
-    int area_id;
-    int rc;
-
-#if (BOOT_IMAGE_NUMBER == 1)
-    (void)state;
-#endif
-
-    area_id = flash_area_id_from_multi_image_slot(BOOT_CURR_IMG(state), slot);
-
-
-    if (bs == NULL) {
-BOOT_LOG_ERR("wtf? BS NOT VALID slot %d", slot);
-}
-uint8_t shit = boot_swap_type_multi(BOOT_CURR_IMG(state));
-//boot_validated_swap_type(state, bs));
-BOOT_LOG_ERR("shit: %d", shit);
-
-    off = 0;
-    if (bs /*&& !boot_status_is_reset(bs)*/) {
-
-BOOT_LOG_ERR("wtf? %d %d %d %d slot %d", bs->op, bs->idx, bs->state, bs->swap_type, slot);
-//1 1 1 0
-//swap, default, BOOT_STATUS_STATE_0, ?
-
-//1 5 1 4 0
-//swap, sector 4, BOOT_STATUS_STATE_0, revert
-
-    if (!boot_status_is_reset(bs)) {
-        boot_find_status(BOOT_CURR_IMG(state), &fap);
-
-        if (fap == NULL || boot_read_swap_size(fap, &swap_size)) {
-            rc = BOOT_EFLASH;
-            goto done;
-        }
-
-BOOT_LOG_ERR("we read status, swap size = %d", swap_size);
-
-        flash_area_close(fap);
-        last_idx = find_last_idx(state, swap_size);
-        sz = boot_img_sector_size(state, BOOT_PRIMARY_SLOT, 0);
-
-        /*
-         * Find the correct offset or slot where the image header is expected to
-         * be found for the steps where it is moved or swapped.
-         */
-
-//BOOT_LOG_ERR("is %d", bs->swap_type);
-        if (bs->swap_type == BOOT_SWAP_TYPE_REVERT) {
-//BELOW LOOKS WRONG
-BOOT_LOG_ERR("revert idx = %d (%d), state = %d, last_idx = %d", bs->idx, (last_idx), bs->state, last_idx);
-            if (slot == 0) {
-//                if ((bs->idx > (last_idx - BOOT_STATUS_IDX_0) || 
-//(bs->idx == (last_idx - BOOT_STATUS_IDX_0) && bs->state == BOOT_STATUS_STATE_1)) && bs->idx <= last_idx) {
-                if ((bs->idx > (last_idx) || 
-(bs->idx == (last_idx) && bs->state == BOOT_STATUS_STATE_1)) && bs->idx <= last_idx) {
-                    slot = 1;
-                    off = 0;
-BOOT_LOG_ERR("aa1 slot = 1, off = 0");
-                } else {
-                    slot = 0;
-                    off = 0;
-BOOT_LOG_ERR("aa2 slot = 0, off = 0");
-                }
-            } else if (slot == 1) {
-//                if (bs->idx > (last_idx - BOOT_STATUS_IDX_0)) {
-                if (bs->idx > (last_idx)) {
-                    slot = 1;
-                    off = sz;
-BOOT_LOG_ERR("aa3 slot = 1, off = %d", sz);
-                } else {
-                    slot = 0;
-                    off = 0;
-BOOT_LOG_ERR("aa4 slot = 0, off = 0");
-                }
-            }
-        } else {
-//below only works if not in revert
-BOOT_LOG_ERR("update idx = %d, state = %d, last_idx = %d", bs->idx, bs->state, last_idx);
-            if (slot == 0) {
-                if ((bs->idx > BOOT_STATUS_IDX_0 || (bs->idx == BOOT_STATUS_IDX_0 && bs->state == BOOT_STATUS_STATE_1)) && bs->idx <= last_idx) {
-                    slot = 1;
-                    off = 0;
-BOOT_LOG_ERR("bb1 slot = 1, off = 0");
-                } else {
-                    slot = 0;
-                    off = 0;
-BOOT_LOG_ERR("bb2 slot = 0, off = 0");
-                }
-            } else if (slot == 1) {
-                if (bs->idx > BOOT_STATUS_IDX_0) {
-                    slot = 0;
-                    off = 0;
-BOOT_LOG_ERR("bb3 slot = 0, off = 0");
-                } else {
-                    slot = 1;
-                    off = sz;
-BOOT_LOG_ERR("bb4 slot = 1, off = %d", sz);
-                }
-            }
-        }
-
-    area_id = flash_area_id_from_multi_image_slot(BOOT_CURR_IMG(state), slot);
-}
-
-#if 0
-            if (bs->idx > BOOT_STATUS_IDX_0 && bs->idx <= last_idx) {
-                slot = (slot == 0) ? 1 : 0;
-            } else if (bs->idx == BOOT_STATUS_IDX_0) {
-                if (slot == 0) {
-                    off = sz;
-                } else if (slot == 1 && bs->state == BOOT_STATUS_STATE_1) {
-                    slot = 0;
-                }
-            }
-#endif
-//        }
-    }
-
-/*
-REDO WHOLE THING
-slot 0: check slot 1 sector 0 first, fall back to slot 0 sector 0
-slot 1: check slot 1 sector 1 first, fall back to slot 0 sector 0
-*/
-
-    if (bs == NULL || boot_status_is_reset(bs)) {
-//Check upgrade area first
-        if (slot == 1) {
-//Check that there is a valid other image first, otherwise...
-            area_id = flash_area_id_from_multi_image_slot(BOOT_CURR_IMG(state), 1);
-
-            rc = flash_area_open(area_id, &fap);
-            if (rc != 0) {
-                rc = BOOT_EFLASH;
-                goto done;
-            }
-
-            off = 0;
-
-            rc = flash_area_read(fap, off, out_hdr, sizeof *out_hdr);
-            if (rc != 0) {
-                rc = BOOT_EFLASH;
-                goto done;
-            }
-
-            if (out_hdr->ih_magic != IMAGE_MAGIC) {
-                flash_area_close(fap);
-                area_id = flash_area_id_from_multi_image_slot(BOOT_CURR_IMG(state), 0);
-
-                rc = flash_area_open(area_id, &fap);
-                if (rc != 0) {
-                    rc = BOOT_EFLASH;
-                    goto done;
-                }
-
-                off = 0;
-
-                rc = flash_area_read(fap, off, out_hdr, sizeof *out_hdr);
-                if (rc != 0) {
-                    rc = BOOT_EFLASH;
-                    goto done;
-                }
-
-                if (out_hdr->ih_magic == IMAGE_MAGIC) {
-//Now use the real update slot
-                    flash_area_close(fap);
-                    area_id = flash_area_id_from_multi_image_slot(BOOT_CURR_IMG(state), 1);
-                    off = boot_img_sector_size(state, BOOT_SECONDARY_SLOT, 0);
-                }
-            } else {
-                    flash_area_close(fap);
-                    area_id = flash_area_id_from_multi_image_slot(BOOT_CURR_IMG(state), 0);
-                    off = 0;
-}
-        } else {
-//Check slot 1 sector 0 first, fall back to slot 0 sector 0
-            area_id = flash_area_id_from_multi_image_slot(BOOT_CURR_IMG(state), 1);
-
-            rc = flash_area_open(area_id, &fap);
-            if (rc != 0) {
-                rc = BOOT_EFLASH;
-                goto done;
-            }
-
-            off = 0;
-
-            rc = flash_area_read(fap, off, out_hdr, sizeof *out_hdr);
-            if (rc != 0) {
-                rc = BOOT_EFLASH;
-                goto done;
-            }
-
-            if (out_hdr->ih_magic != IMAGE_MAGIC) {
-                    flash_area_close(fap);
-                    area_id = flash_area_id_from_multi_image_slot(BOOT_CURR_IMG(state), 0);
-                    off = 0;
-            }
-        }
-    }
-
-//    area_id = flash_area_id_from_multi_image_slot(BOOT_CURR_IMG(state), 1);
-
-    rc = flash_area_open(area_id, &fap);
-    if (rc != 0) {
-        rc = BOOT_EFLASH;
-        goto done;
-    }
-
-/*
-if (slot == 1) {
-off = boot_img_sector_size(state, BOOT_SECONDARY_SLOT, 0);
-} else {
-off = 0;
-}
-*/
-
-    rc = flash_area_read(fap, off, out_hdr, sizeof *out_hdr);
-    if (rc != 0) {
-        rc = BOOT_EFLASH;
-        goto done;
-    }
-
-/*
-    if (out_hdr->ih_magic != IMAGE_MAGIC) {
-    flash_area_close(&fap);
-    area_id = flash_area_id_from_multi_image_slot(BOOT_CURR_IMG(state), 0);
-
-    rc = flash_area_open(area_id, &fap);
-    if (rc != 0) {
-        rc = BOOT_EFLASH;
-        goto done;
-    }
-
-off = 0;
-    rc = flash_area_read(fap, off, out_hdr, sizeof *out_hdr);
-    if (rc != 0) {
-        rc = BOOT_EFLASH;
-        goto done;
-    }
-
-    if (out_hdr->ih_magic == IMAGE_MAGIC && slot == 1) {
-//Need to ensure there is a secondary 
-}
-
-if (slot == 1) {
-} else {
-}
-}
-}
-*/
-
-#if 0
-    area_id = flash_area_id_from_multi_image_slot(BOOT_CURR_IMG(state), slot);
-    rc = flash_area_open(area_id, &fap);
-    if (rc != 0) {
-        rc = BOOT_EFLASH;
-        goto done;
-    }
-
-#if 0
-    if ((bs == NULL || boot_status_is_reset(bs)) && (slot % 2) == 1) {
-}
-#endif
-
-    rc = flash_area_read(fap, off, out_hdr, sizeof *out_hdr);
-    if (rc != 0) {
-        rc = BOOT_EFLASH;
-        goto done;
-    }
-
-//BOOT_LOG_ERR("magic: %d", out_hdr->ih_magic);
-
-    if (out_hdr->ih_magic != IMAGE_MAGIC) {
-        /* Check in the secondary position in the upgrade slot */
-BOOT_LOG_ERR("!!OFFSET %x from %x", out_hdr->ih_magic, off);
-#if 1
-//if (bs == NULL || bs->swap_type == BOOT_SWAP_TYPE_NONE)
-{
-            off += boot_img_sector_size(state, BOOT_SECONDARY_SLOT, 0);
-            rc = flash_area_read(fap, off, out_hdr, sizeof *out_hdr);
-            if (rc != 0) {
-                rc = BOOT_EFLASH;
-                goto done;
-            }
-BOOT_LOG_ERR("!!NEW OFFSET %x from %x", out_hdr->ih_magic, off);
-}
-#endif
-
-        /* We only know where the headers are located when bs is valid */
-        if (bs != NULL && out_hdr->ih_magic != IMAGE_MAGIC) {
-            rc = -1;
-            goto done;
-        } else if (bs != NULL && out_hdr->ih_magic == IMAGE_MAGIC) {
-state->secondary_offset[BOOT_CURR_IMG(state)] = boot_img_sector_size(state, BOOT_SECONDARY_SLOT, 0);
-}
-    }
-#endif
-
-BOOT_LOG_ERR("slot: %d, area: %d, off: %d, magic: %x", slot, area_id, off, out_hdr->ih_magic);
-
-        if (bs != NULL && out_hdr->ih_magic != IMAGE_MAGIC) {
-            rc = -1;
-            goto done;
-}
 
     rc = 0;
 
@@ -941,9 +628,16 @@ BOOT_LOG_ERR("erase sec trailer");
         rc = swap_erase_trailer_sectors(state, fap_sec);
         assert(rc == 0);
 
-BOOT_LOG_ERR("write sec ok");
-        rc = boot_write_image_ok(fap_sec);
+#if 0
+            rc = swap_status_init(state, fap_sec, bs);
+            assert(rc == 0);
+#else
+rc = boot_write_copy_done(fap_sec);
         assert(rc == 0);
+
+//BOOT_LOG_ERR("write sec ok");
+//        rc = boot_write_image_ok(fap_sec);
+//        assert(rc == 0);
 
 BOOT_LOG_ERR("write sec swap size");
         rc = boot_write_swap_size(fap_sec, bs->swap_size);
@@ -952,6 +646,7 @@ BOOT_LOG_ERR("write sec swap size");
 BOOT_LOG_ERR("write magic");
         rc = boot_write_magic(fap_sec);
         assert(rc == 0);
+#endif
     }
 }
 
@@ -1082,6 +777,9 @@ BOOT_LOG_ERR("SKIP2 %d vs %d", idx, bs->idx);
 
             idx++;
         }
+
+//rc = boot_write_copy_done(fap_sec);
+//        assert(rc == 0);
     }
 
     flash_area_close(fap_pri);

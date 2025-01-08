@@ -1033,25 +1033,21 @@ boot_validate_slot(struct boot_loader_state *state, int slot,
             /* Image in the secondary slot does not satisfy version requirement.
              * Erase the image and continue booting from the primary slot.
              */
-BOOT_LOG_ERR("!! SHIP1");
             fih_rc = FIH_NO_BOOTABLE_IMAGE;
             goto out;
         }
     }
 #endif
     if (!boot_is_header_valid(hdr, fap, state)) {
-BOOT_LOG_ERR("!! SHIP2");
         fih_rc = FIH_FAILURE;
     } else {
         BOOT_HOOK_CALL_FIH(boot_image_check_hook, FIH_BOOT_HOOK_REGULAR,
                            fih_rc, BOOT_CURR_IMG(state), slot);
         if (FIH_EQ(fih_rc, FIH_BOOT_HOOK_REGULAR)) {
             FIH_CALL(boot_image_check, fih_rc, state, hdr, fap, bs);
-BOOT_LOG_ERR("!! SHIP3");
         }
     }
     if (FIH_NOT_EQ(fih_rc, FIH_SUCCESS)) {
-BOOT_LOG_ERR("!! SHIP4");
         if ((slot != BOOT_PRIMARY_SLOT) || ARE_SLOTS_EQUIVALENT()) {
             flash_area_erase(fap, 0, flash_area_get_size(fap));
             /* Image is invalid, erase it to prevent further unnecessary
@@ -1464,7 +1460,12 @@ boot_copy_image(struct boot_loader_state *state, struct boot_status *bs)
 
     BOOT_LOG_INF("Image %d copying the secondary slot to the primary slot: 0x%zx bytes",
                  image_index, size);
+#if defined(MCUBOOT_SWAP_USING_OFFSET)
+    rc = boot_copy_region(state, fap_secondary_slot, fap_primary_slot,
+                          boot_img_sector_size(state, BOOT_SECONDARY_SLOT, 0), 0, size);
+#else
     rc = boot_copy_region(state, fap_secondary_slot, fap_primary_slot, 0, 0, size);
+#endif
     if (rc != 0) {
         return rc;
     }
@@ -1650,8 +1651,6 @@ boot_swap_image(struct boot_loader_state *state, struct boot_status *bs)
         flash_area_close(fap);
     }
 
-BOOT_LOG_ERR("HAM AND CHEESE");
-
     swap_run(state, bs, copy_size);
 
 #ifdef MCUBOOT_VALIDATE_PRIMARY_SLOT
@@ -1683,8 +1682,6 @@ boot_perform_update(struct boot_loader_state *state, struct boot_status *bs)
 #ifndef MCUBOOT_OVERWRITE_ONLY
     uint8_t swap_type;
 #endif
-
-BOOT_LOG_ERR("** why?");
 
     /* At this point there are no aborted swaps. */
 #if defined(MCUBOOT_OVERWRITE_ONLY)
@@ -2300,15 +2297,6 @@ context_boot_go(struct boot_loader_state *state, struct boot_rsp *rsp)
 
         /* Set the previously determined swap type */
         bs.swap_type = BOOT_SWAP_TYPE(state);
-BOOT_LOG_ERR("!! UPDATE = %d for %d", bs.swap_type, BOOT_CURR_IMG(state));
-
-if (bs.swap_type == BOOT_SWAP_TYPE_TEST) {
-BOOT_LOG_ERR("^^ test ?");
-} else if (bs.swap_type == BOOT_SWAP_TYPE_PERM) {
-BOOT_LOG_ERR("^^ perm ?");
-} else if (bs.swap_type == BOOT_SWAP_TYPE_REVERT) {
-BOOT_LOG_ERR("^^ revert ?");
-}
 
         switch (BOOT_SWAP_TYPE(state)) {
         case BOOT_SWAP_TYPE_NONE:
@@ -3106,7 +3094,9 @@ const struct image_max_size *boot_get_max_app_size(void)
 }
 #endif
 
+#if defined(MCUBOOT_SWAP_USING_OFFSET)
 uint32_t todo_sec_off()
 {
 return boot_data.secondary_offset[BOOT_CURR_IMG(&boot_data)];
 }
+#endif

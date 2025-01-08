@@ -515,7 +515,6 @@ impl ManifestGen for TlvGen {
                 (hash,48,TlvKinds::SHA384)
             };
             let hash = hash.as_ref();
-println!("hash: {:?}", hash);
 
             assert!(hash.len() == hash_size);
             result.write_u16::<LittleEndian>(tlv_kind as u16).unwrap();
