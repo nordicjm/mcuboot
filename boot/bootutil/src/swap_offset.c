@@ -17,6 +17,9 @@
  * limitations under the License.
  */
 
+#if !defined(__BOOTSIM__)
+#include <zephyr/kernel.h>
+#endif
 #include <stddef.h>
 #include <stdbool.h>
 #include <inttypes.h>
@@ -32,6 +35,10 @@
 BOOT_LOG_MODULE_DECLARE(mcuboot);
 
 #ifdef MCUBOOT_SWAP_USING_OFFSET
+
+#if defined(__BOOTSIM__)
+extern void breakit();
+#endif
 
 int secondary_image_is_in_first_sector(const struct flash_area *fap);
 
@@ -118,15 +125,21 @@ BOOT_LOG_ERR("we read status, swap size = %d", swap_size);
              * be found for the steps where it is moved or swapped.
              */
             if (bs->swap_type == BOOT_SWAP_TYPE_REVERT || boot_swap_type_multi(BOOT_CURR_IMG(state)) == BOOT_SWAP_TYPE_REVERT) {
-BOOT_LOG_ERR("revert idx = %d (%d), state = %d, last_idx = %d", bs->idx, (last_idx), bs->state, last_idx);
+++last_idx;
+BOOT_LOG_ERR("revert idx = %d, state = %d, last_idx = %d", (bs->idx - BOOT_STATUS_IDX_0), bs->state, last_idx);
                 if (slot == 0) {
-                    if (((bs->idx - BOOT_STATUS_IDX_0) > (last_idx) || 
-((bs->idx - BOOT_STATUS_IDX_0) == (last_idx) && bs->state == BOOT_STATUS_STATE_1)) /*&& (bs->idx - 1) <= last_idx*/) {
-                        slot = 1;
+                    if (((bs->idx - BOOT_STATUS_IDX_0) >= (last_idx) || 
+((bs->idx - BOOT_STATUS_IDX_0) == (last_idx) && bs->state == BOOT_STATUS_STATE_2)) /*&& (bs->idx - 1) <= last_idx*/) {
+/*
+        while (idx <= last_idx) {
+            if (idx >= (bs->idx - BOOT_STATUS_IDX_0)) {
+                uint32_t mirror_idx = last_idx - idx;
+*/
+                        slot = 0;
                         off = 0;
 BOOT_LOG_ERR("aa1 slot = 1, off = 0");
                     } else {
-                        slot = 0;
+                        slot = 1;
                         off = 0;
 BOOT_LOG_ERR("aa2 slot = 0, off = 0");
                     }
@@ -308,7 +321,11 @@ int swap_read_status_bytes(const struct flash_area *fap, struct boot_loader_stat
         bs->op = BOOT_STATUS_OP_SWAP;
         bs->idx = (found_idx / BOOT_STATUS_SWAP_STATE_COUNT) + BOOT_STATUS_IDX_0;
         bs->state = (found_idx % BOOT_STATUS_SWAP_STATE_COUNT) + BOOT_STATUS_STATE_0;
+BOOT_LOG_ERR("found_idx = %d, bs->idx = %d, bs->state = %d", found_idx, bs->idx, bs->state);
+//k_sleep(K_SECONDS(1));
     }
+
+BOOT_LOG_ERR(" __ has here");
 
     return 0;
 }
@@ -321,6 +338,8 @@ uint32_t boot_status_internal_off(const struct boot_status *bs, int elem_sz)
     idx_sz = elem_sz * BOOT_STATUS_STATE_COUNT;
     off = (bs->idx - BOOT_STATUS_IDX_0) * idx_sz +
           (bs->state - BOOT_STATUS_STATE_0) * elem_sz;
+
+BOOT_LOG_ERR("idx_sz = %d, off = %d for elem_sz = %d", idx_sz, off, elem_sz);
 
     return off;
 }
@@ -486,7 +505,7 @@ static void boot_swap_sectors(int idx, uint32_t sz, struct boot_loader_state *st
 BOOT_LOG_ERR("~~ UPDATE state 0 pri 0x%x -> sec 0x%x", pri_off, sec_off);
         /* Copy from slot 0 X to slot 1 X */
         if (skip_primary == true) {
-            BOOT_LOG_DBG("Skipping erase of secondary 0x%x and copy from primary 0x%x", sec_off,
+            BOOT_LOG_ERR("Skipping erase of secondary 0x%x and copy from primary 0x%x", sec_off,
                          pri_off);
         } else {
             BOOT_LOG_DBG("Erasing secondary 0x%x of 0x%x", sec_off, sz);
@@ -508,7 +527,7 @@ BOOT_LOG_ERR("~~ UPDATE state 0 pri 0x%x -> sec 0x%x", pri_off, sec_off);
 BOOT_LOG_ERR("~~ UPDATE state 1 sec 0x%x -> pri 0x%x", sec_up_off, pri_off);
         /* Erase slot 0 X */
         if (skip_secondary == true) {
-            BOOT_LOG_DBG("Skipping erase of primary 0x%x and copy from secondary 0x%x", pri_off,
+            BOOT_LOG_ERR("Skipping erase of primary 0x%x and copy from secondary 0x%x", pri_off,
                          sec_up_off);
         } else {
             BOOT_LOG_DBG("Erasing primary 0x%x of 0x%x", pri_off, sz);
@@ -547,7 +566,7 @@ static void boot_swap_sectors_revert(int idx, uint32_t sz, struct boot_loader_st
     if (bs->state == BOOT_STATUS_STATE_0) {
 BOOT_LOG_ERR("~~ REVERT state 0 pri 0x%x -> sec 0x%x", pri_off, sec_off);
         if (skip_primary == true) {
-            BOOT_LOG_DBG("Skipping erase of secondary 0x%x and copy from primary 0x%x", sec_off,
+            BOOT_LOG_ERR("Skipping erase of secondary 0x%x and copy from primary 0x%x", sec_off,
                          pri_off);
         } else {
             /* Copy from slot 0 X to slot 1 X */
@@ -569,7 +588,7 @@ BOOT_LOG_ERR("~~ REVERT state 0 pri 0x%x -> sec 0x%x", pri_off, sec_off);
     if (bs->state == BOOT_STATUS_STATE_1) {
 BOOT_LOG_ERR("~~ REVERT state 1 sec 0x%x -> pri 0x%x", sec_up_off, pri_off);
         if (skip_secondary == true) {
-            BOOT_LOG_DBG("Skipping erase of primary 0x%x and copy from secondary 0x%x", pri_off,
+            BOOT_LOG_ERR("Skipping erase of primary 0x%x and copy from secondary 0x%x", pri_off,
                          sec_up_off);
         } else {
             /* Erase slot 0 X */
@@ -628,25 +647,25 @@ BOOT_LOG_ERR("erase sec trailer");
         rc = swap_erase_trailer_sectors(state, fap_sec);
         assert(rc == 0);
 
-#if 0
-            rc = swap_status_init(state, fap_sec, bs);
-            assert(rc == 0);
-#else
+//#if 0
+//#else
 rc = boot_write_copy_done(fap_sec);
         assert(rc == 0);
 
+            rc = swap_status_init(state, fap_sec, bs);
+            assert(rc == 0);
 //BOOT_LOG_ERR("write sec ok");
 //        rc = boot_write_image_ok(fap_sec);
 //        assert(rc == 0);
 
-BOOT_LOG_ERR("write sec swap size");
-        rc = boot_write_swap_size(fap_sec, bs->swap_size);
-        assert(rc == 0);
+//BOOT_LOG_ERR("write sec swap size");
+//        rc = boot_write_swap_size(fap_sec, bs->swap_size);
+//        assert(rc == 0);
 
-BOOT_LOG_ERR("write magic");
-        rc = boot_write_magic(fap_sec);
-        assert(rc == 0);
-#endif
+//BOOT_LOG_ERR("write magic");
+//        rc = boot_write_magic(fap_sec);
+//        assert(rc == 0);
+//#endif
     }
 }
 
@@ -764,6 +783,13 @@ BOOT_LOG_ERR("SKIP1 %d vs %d", idx, bs->idx);
         rc = boot_erase_region(fap_sec, boot_img_sector_off(state, BOOT_SECONDARY_SLOT, 0),
                                sector_sz);
         assert(rc == 0);
+#if defined(__BOOTSIM__)
+//breakit();
+#endif
+BOOT_LOG_ERR("DID ERASE...");
+#if !defined(__BOOTSIM__)
+k_sleep(K_SECONDS(3));
+#endif
     } else {
         while (idx <= last_idx) {
             if (idx >= (bs->idx - BOOT_STATUS_IDX_0)) {

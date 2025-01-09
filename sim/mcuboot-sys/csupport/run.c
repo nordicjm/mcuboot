@@ -279,7 +279,7 @@ int invoke_boot_go(struct sim_context *ctx, struct area_desc *adesc,
         sim_reset_flash_areas();
         sim_reset_context();
         free(state);
-        /* printf("boot_go off: %d (0x%08x)\n", res, rsp->br_image_off); */
+        printf("boot_go off: %d (0x%08x)\n", res, rsp->br_image_off);
         return res;
     } else {
         sim_reset_flash_areas();
@@ -354,6 +354,18 @@ int flash_area_write(const struct flash_area *area, uint32_t off, const void *sr
         longjmp(ctx->boot_jmpbuf, 1);
     }
     return sim_flash_write(area->fa_device_id, area->fa_off + off, src, len);
+}
+
+bool lolbreak = false;
+
+void breakit()
+{
+if (lolbreak == false) {
+lolbreak = true;
+    struct sim_context *ctx = sim_get_context();
+        ctx->jumped++;
+        longjmp(ctx->boot_jmpbuf, 1);
+}
 }
 
 int flash_area_erase(const struct flash_area *area, uint32_t off, uint32_t len)

@@ -248,7 +248,7 @@ impl ImagesBuilder {
                 let upgr = match deps.depends[image_num] {
                         DepType::NoUpgrade => install_no_image(),
                         _ => install_image(&mut flash, &slots[1],
-                            maximal(46928), &ram, &*dep, img_manipulation, Some(0), true)
+                            maximal(56928), &ram, &*dep, img_manipulation, Some(0), true)
                     };
                 (prim, upgr)
             };
@@ -781,6 +781,7 @@ impl Images {
         }
 
         if self.is_swap_upgrade() {
+//let i = 19;
             for i in 1 .. self.total_count.unwrap() {
                 info!("Try interruption at {}", i);
                 if self.try_revert_with_fail_at(i) {
@@ -1463,6 +1464,7 @@ impl Images {
         let mut counter = stop;
         if !c::boot_go(&mut flash, &self.areadesc, Some(&mut counter), None,
                        false).interrupted() {
+println!("e1");
             warn!("Should have stopped test at interruption point");
             fails += 1;
         }
@@ -1470,32 +1472,38 @@ impl Images {
         // In a multi-image setup, copy done might be set if any number of
         // images was already successfully swapped.
         if !self.verify_trailers_loose(&flash, 0, None, None, BOOT_FLAG_UNSET) {
+println!("e2");
             warn!("copy_done should be unset");
             fails += 1;
         }
 
         if !c::boot_go(&mut flash, &self.areadesc, None, None, false).success() {
+println!("e3");
             warn!("Should have finished test upgrade");
             fails += 1;
         }
 
         if !self.verify_images(&flash, 0, 1) {
+println!("e4");
             warn!("Image in the primary slot before revert is invalid at stop={}",
                   stop);
             fails += 1;
         }
         if !self.verify_images(&flash, 1, 0) {
+println!("e5");
             warn!("Image in the secondary slot before revert is invalid at stop={}",
                   stop);
             fails += 1;
         }
         if !self.verify_trailers(&flash, 0, BOOT_MAGIC_GOOD,
                                  BOOT_FLAG_UNSET, BOOT_FLAG_SET) {
+println!("e6");
             warn!("Mismatched trailer for the primary slot before revert");
             fails += 1;
         }
         if !self.verify_trailers(&flash, 1, BOOT_MAGIC_UNSET,
                                 BOOT_FLAG_UNSET, BOOT_FLAG_UNSET) {
+println!("e7");
             warn!("Mismatched trailer for the secondary slot before revert");
             fails += 1;
         }
@@ -1504,21 +1512,25 @@ impl Images {
         let mut counter = stop;
         if !c::boot_go(&mut flash, &self.areadesc, Some(&mut counter), None,
                        false).interrupted() {
+println!("e8");
             warn!("Should have stopped revert at interruption point");
             fails += 1;
         }
 
         if !c::boot_go(&mut flash, &self.areadesc, None, None, false).success() {
+println!("e9");
             warn!("Should have finished revert upgrade");
             fails += 1;
         }
 
         if !self.verify_images(&flash, 0, 0) {
+println!("e10");
             warn!("Image in the primary slot after revert is invalid at stop={}",
                   stop);
             fails += 1;
         }
         if !self.verify_images(&flash, 1, 1) {
+println!("e11");
             warn!("Image in the secondary slot after revert is invalid at stop={}",
                   stop);
             fails += 1;
@@ -1526,25 +1538,30 @@ impl Images {
 
         if !self.verify_trailers(&flash, 0, BOOT_MAGIC_GOOD,
                                  BOOT_FLAG_SET, BOOT_FLAG_SET) {
+println!("e12");
             warn!("Mismatched trailer for the primary slot after revert");
             fails += 1;
         }
         if !self.verify_trailers(&flash, 1, BOOT_MAGIC_UNSET,
                                  BOOT_FLAG_UNSET, BOOT_FLAG_UNSET) {
+println!("e13");
             warn!("Mismatched trailer for the secondary slot after revert");
             fails += 1;
         }
 
         if !c::boot_go(&mut flash, &self.areadesc, None, None, false).success() {
+println!("e14");
             warn!("Should have finished 3rd boot");
             fails += 1;
         }
 
         if !self.verify_images(&flash, 0, 0) {
+println!("e15");
             warn!("Image in the primary slot is invalid on 1st boot after revert");
             fails += 1;
         }
         if !self.verify_images(&flash, 1, 1) {
+println!("e16");
             warn!("Image in the secondary slot is invalid on 1st boot after revert");
             fails += 1;
         }
@@ -2066,8 +2083,10 @@ fn verify_image(flash: &SimMultiFlash, slot: &SlotInfo, images: &ImageData) -> b
 
         if buf != &copy[..] && buf != &copy_offset[..] {
             for i in 0 .. buf.len() {
-                if buf[i] != copy[i] {
-                    info!("First failure for slot{} at {:#x} ({:#x} within) {:#x}!=({:#x} or ${:#x})",
+                if buf[i] != copy[i] && buf[i] != copy_offset[i] {
+                    println!("First failure for slot{} at {:#x} ({:#x} within) {:#x}!=({:#x} or {:#x})",
+                          slot.index, offset + i, i, buf[i], copy[i], copy_offset[i]);
+                    info!("First failure for slot{} at {:#x} ({:#x} within) {:#x}!=({:#x} or {:#x})",
                           slot.index, offset + i, i, buf[i], copy[i], copy_offset[i]);
                     break;
                 }
