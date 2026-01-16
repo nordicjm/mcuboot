@@ -5,6 +5,8 @@
  * Copyright (c) 2020 Arm Limited
  */
 
+
+blah
 #include <assert.h>
 #include "bootutil/image.h"
 #include "bootutil_priv.h"
