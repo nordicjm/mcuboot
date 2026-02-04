@@ -47,6 +47,8 @@ jobs:
         - "sig-ecdsa-psa,sig-ecdsa-psa sig-p384"
         - "ram-load enc-aes256-kw multiimage"
         - "ram-load enc-aes256-kw sig-ecdsa-mbedtls multiimage"
+        - "logical-sectors-4k sig-rsa enc-rsa validate-primary-slot"
+        - "logical-sectors-4k sig-ecdsa enc-kw multiimage"
     runs-on: ubuntu-latest
     env:
       MULTI_FEATURES: ${{ matrix.features }}
