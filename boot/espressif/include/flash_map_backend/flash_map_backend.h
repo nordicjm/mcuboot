@@ -78,9 +78,6 @@ int flash_area_get_sectors(int fa_id, uint32_t *count,
                            struct flash_sector *sectors);
 
 //! Retrieve the flash sector a given offset belongs to.
-int flash_area_sector_from_off(uint32_t off, struct flash_sector *sector);
-
-//! Retrieve the flash sector a given offset belongs to.
 int flash_area_get_sector(const struct flash_area *area, uint32_t off,
                           struct flash_sector *sector);
 
