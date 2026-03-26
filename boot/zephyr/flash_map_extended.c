@@ -46,11 +46,6 @@ BOOT_LOG_MODULE_DECLARE(mcuboot);
 #define FLASH_DEVICE_NODE DT_CHOSEN(zephyr_flash_controller)
 #define FLASH_DEVICE_BASE DT_REG_ADDR_BY_IDX(DT_PARENT(FLASH_DEVICE_NODE), 1)
 
-#elif (!defined(CONFIG_XTENSA) && DT_HAS_CHOSEN(zephyr_flash_controller))
-#define FLASH_DEVICE_ID SOC_FLASH_0_ID
-#define FLASH_DEVICE_BASE CONFIG_FLASH_BASE_ADDRESS
-#define FLASH_DEVICE_NODE DT_CHOSEN(zephyr_flash_controller)
-
 #elif (defined(CONFIG_XTENSA) && DT_NODE_EXISTS(DT_INST(0, jedec_spi_nor)))
 #define FLASH_DEVICE_ID SPI_FLASH_0_ID
 #define FLASH_DEVICE_BASE 0
@@ -68,9 +63,28 @@ BOOT_LOG_MODULE_DECLARE(mcuboot);
 #define FLASH_DEVICE_BASE CONFIG_FLASH_BASE_ADDRESS
 #define FLASH_DEVICE_NODE DT_CHOSEN(zephyr_flash)
 
+#elif (!defined(CONFIG_XTENSA) && DT_HAS_CHOSEN(zephyr_flash_controller))
+#define USE_NEW
+//#define FLASH_DEVICE_ID SOC_FLASH_0_ID
+//#define FLASH_DEVICE_BASE CONFIG_FLASH_BASE_ADDRESS
+//#define FLASH_DEVICE_NODE DT_CHOSEN(zephyr_flash_controller)
+
 #else
 #error "FLASH_DEVICE_ID could not be determined"
 #endif
+
+#ifdef USE_NEW
+
+struct flash_address_mapping_t {
+    uint8_t id;
+    uintptr_t base_address;
+};
+
+const struct flash_address_mapping_t flash_address_mapping = {
+    DT_FOREACH_STATUS_OKAY(zephyr_mapped_partition, MAPPED_AREA_FOREACH)
+    DT_FOREACH_STATUS_OKAY(fixed_partitions, FOREACH_PARTITION)
+    DT_FOREACH_STATUS_OKAY(fixed_subpartitions, FOREACH_PARTITION)
+};
 
 int flash_device_base(uint8_t fd_id, uintptr_t *ret)
 {
@@ -81,7 +95,33 @@ int flash_device_base(uint8_t fd_id, uintptr_t *ret)
     }
     *ret = FLASH_DEVICE_BASE;
     return 0;
+
+PARTITION_ADDRESS()
+PARTITION_OFFSET()
 }
+
+uint8_t flash_area_get_device_id(const struct flash_area *fa)
+{
+    return fa->fa_id;
+}
+#else
+int flash_device_base(uint8_t fd_id, uintptr_t *ret)
+{
+    if (fd_id != FLASH_DEVICE_ID) {
+        BOOT_LOG_ERR("invalid flash ID %d; expected %d",
+                     fd_id, FLASH_DEVICE_ID);
+        return -EINVAL;
+    }
+    *ret = FLASH_DEVICE_BASE;
+    return 0;
+}
+
+uint8_t flash_area_get_device_id(const struct flash_area *fa)
+{
+    (void)fa;
+    return FLASH_DEVICE_ID;
+}
+#endif
 
 /*
  * This depends on the mappings defined in sysflash.h.
@@ -160,12 +200,6 @@ int flash_area_id_from_direct_image(int image_id)
     return -EINVAL;
 }
 #endif
-
-uint8_t flash_area_get_device_id(const struct flash_area *fa)
-{
-    (void)fa;
-    return FLASH_DEVICE_ID;
-}
 
 #define ERASED_VAL 0xff
 __weak uint8_t flash_area_erased_val(const struct flash_area *fap)

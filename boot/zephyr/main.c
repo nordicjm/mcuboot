@@ -404,6 +404,8 @@ static void do_boot(struct boot_rsp *rsp)
     rc = flash_device_base(rsp->br_flash_dev_id, &flash_base);
     assert(rc == 0);
 
+LOG_ERR("they are: 0x%x, 0x%x", flash_base, rsp->br_image_off);
+
     start = (void *)(flash_base + rsp->br_image_off +
                      rsp->br_hdr->ih_hdr_size);
 #endif
