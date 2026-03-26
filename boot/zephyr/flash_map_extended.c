@@ -72,8 +72,6 @@ BOOT_LOG_MODULE_DECLARE(mcuboot);
 #error "FLASH_DEVICE_ID could not be determined"
 #endif
 
-static const struct device *flash_dev = DEVICE_DT_GET(FLASH_DEVICE_NODE);
-
 int flash_device_base(uint8_t fd_id, uintptr_t *ret)
 {
     if (fd_id != FLASH_DEVICE_ID) {
@@ -162,22 +160,6 @@ int flash_area_id_from_direct_image(int image_id)
     return -EINVAL;
 }
 #endif
-
-int flash_area_sector_from_off(off_t off, struct flash_sector *sector)
-{
-    int rc;
-    struct flash_pages_info page;
-
-    rc = flash_get_page_info_by_offs(flash_dev, off, &page);
-    if (rc) {
-        return rc;
-    }
-
-    sector->fs_off = page.start_offset;
-    sector->fs_size = page.size;
-
-    return rc;
-}
 
 uint8_t flash_area_get_device_id(const struct flash_area *fa)
 {
