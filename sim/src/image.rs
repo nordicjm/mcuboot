@@ -538,6 +538,29 @@ impl ImagesBuilder {
                 flash.insert(1, dev1);
                 (flash, Rc::new(areadesc), &[Caps::SwapUsingMove, Caps::SwapUsingOffset])
             }
+            DeviceName::Stm32f769 => {
+                // Faithful 2 MiB STM32F769 in dual-bank mode
+                let dev = SimFlash::new(vec![
+                                        // Bank 1: 0x000000..0x100000
+                                        16 * 1024, 16 * 1024, 16 * 1024, 16 * 1024, 64 * 1024,
+                                        128 * 1024, 128 * 1024, 128 * 1024, 128 * 1024,
+                                        128 * 1024, 128 * 1024, 128 * 1024,
+                                        // Bank 2: 0x100000..0x200000
+                                        16 * 1024, 16 * 1024, 16 * 1024, 16 * 1024, 64 * 1024,
+                                        128 * 1024, 128 * 1024, 128 * 1024, 128 * 1024,
+                                        128 * 1024, 128 * 1024, 128 * 1024],
+                                        align as usize, erased_val);
+                let dev_id = 0;
+                let mut areadesc = AreaDesc::new();
+                areadesc.add_flash_sectors(dev_id, &dev);
+                areadesc.add_image(0x000000, 0x040000, FlashId::Image0, dev_id);       // primary,   bank 1
+                areadesc.add_image(0x100000, 0x040000, FlashId::Image1, dev_id);       // secondary, bank 2
+                areadesc.add_image(0x040000, 0x020000, FlashId::ImageScratch, dev_id); // scratch,   bank 1
+
+                let mut flash = SimMultiFlash::new();
+                flash.insert(dev_id, dev);
+                (flash, Rc::new(areadesc), &[Caps::SwapUsingMove, Caps::SwapUsingOffset])
+            }
             DeviceName::K64f => {
                 // NXP style flash.  Small sectors, one small sector for scratch.
                 let dev = SimFlash::new(vec![4096; 128], align as usize, erased_val);
