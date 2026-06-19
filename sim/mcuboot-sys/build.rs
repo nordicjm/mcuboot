@@ -43,10 +43,12 @@ fn main() {
     let max_align_32 = env::var("CARGO_FEATURE_MAX_ALIGN_32").is_ok();
     let hw_rollback_protection = env::var("CARGO_FEATURE_HW_ROLLBACK_PROTECTION").is_ok();
     let check_load_addr = env::var("CARGO_FEATURE_CHECK_LOAD_ADDR").is_ok();
+    let logical_sectors_4k = env::var("CARGO_FEATURE_LOGICAL_SECTORS_4K").is_ok();
+    let logical_sectors_64k = env::var("CARGO_FEATURE_LOGICAL_SECTORS_64K").is_ok();
+    let logical_sectors_256k = env::var("CARGO_FEATURE_LOGICAL_SECTORS_256K").is_ok();
     let custom_crypto = env::var("CARGO_FEATURE_CUSTOM_CRYPTO").is_ok();
     let custom_enc_crypto = env::var("CARGO_FEATURE_CUSTOM_ENC_CRYPTO").is_ok();
     let mbedtls_v4 = env::var("CARGO_FEATURE_MBEDTLS_V4").is_ok();
-    let logical_sectors_4k = env::var("CARGO_FEATURE_LOGICAL_SECTORS_4K").is_ok();
 
     let mut conf = CachedBuild::new();
     conf.conf.define("__BOOTSIM__", None);
@@ -63,8 +65,20 @@ fn main() {
         conf.conf.define("MCUBOOT_BOOT_MAX_ALIGN", Some("8"));
     }
 
-    if logical_sectors_4k {
-        conf.conf.define("MCUBOOT_LOGICAL_SECTOR_SIZE", Some("4096"));
+    let logical_sector_sizes = [
+        (logical_sectors_4k, "4096"),
+        (logical_sectors_64k, "65536"),
+        (logical_sectors_256k, "262144"),
+    ];
+    let enabled_logical_sector_sizes: Vec<_> = logical_sector_sizes.iter()
+        .filter(|(enabled, _)| *enabled)
+        .collect();
+    if enabled_logical_sector_sizes.len() > 1 {
+        panic!("only one logical-sectors-* feature may be enabled");
+    }
+    if let Some((_, size)) = enabled_logical_sector_sizes.first() {
+        conf.conf.define("MCUBOOT_LOGICAL_SECTOR_SIZE", Some(*size));
+        conf.conf.define("MCUBOOT_VERIFY_LOGICAL_SECTORS", None);
     }
 
     conf.conf.define("MCUBOOT_IMAGE_NUMBER", Some(if multiimage { "2" } else { "1" }));

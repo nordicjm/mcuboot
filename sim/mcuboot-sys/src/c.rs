@@ -67,6 +67,18 @@ impl BootGoResult {
     }
 }
 
+/// The logical sector size compiled into MCUboot, or zero when it is disabled.
+pub const fn logical_sector_size() -> usize {
+    #[cfg(feature = "logical-sectors-4k")]
+    { return 4 * 1024; }
+    #[cfg(feature = "logical-sectors-64k")]
+    { return 64 * 1024; }
+    #[cfg(feature = "logical-sectors-256k")]
+    { return 256 * 1024; }
+    #[allow(unreachable_code)]
+    0
+}
+
 /// Invoke the bootloader on this flash device.
 pub fn boot_go(multiflash: &mut SimMultiFlash, areadesc: &AreaDesc,
                counter: Option<&mut i32>, image_index: Option<i32>,

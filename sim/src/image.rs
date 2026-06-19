@@ -140,9 +140,35 @@ impl ImagesBuilder {
     pub fn new(device: DeviceName, align: usize, erased_val: u8) -> Result<Self, String> {
         let (flash, areadesc, unsupported_caps) = Self::make_device(device, align, erased_val);
 
+        let logical_sector_size = c::logical_sector_size();
+        if logical_sector_size != 0 &&
+                !areadesc.supports_logical_sector_size(logical_sector_size) {
+            return Err(format!("incompatible with {} byte logical sectors", logical_sector_size));
+        }
+        if logical_sector_size != 0 && Caps::SwapUsingScratch.present() &&
+                !areadesc.uses_native_sector_size(logical_sector_size) {
+            return Err("scratch tests require native-size erase sectors".to_string());
+        }
+
         for cap in unsupported_caps {
-            if cap.present() {
+            let logical_sectors_enable_swap = logical_sector_size != 0 &&
+                matches!(device, DeviceName::Stm32f4 | DeviceName::Stm32f769) &&
+                matches!(cap, Caps::SwapUsingMove | Caps::SwapUsingOffset);
+            if cap.present() && !logical_sectors_enable_swap {
                 return Err(format!("unsupported {:?}", cap));
+            }
+        }
+
+        if logical_sector_size != 0 {
+            let required_slot = if Caps::SwapUsingOffset.present() {
+                FlashId::Image1
+            } else {
+                FlashId::Image0
+            };
+            if (Caps::SwapUsingMove.present() || Caps::SwapUsingOffset.present()) &&
+                    areadesc.find(required_slot).map(|(_, len, _)| len)
+                        .unwrap_or(0) <= 2 * logical_sector_size {
+                return Err("slot too small for logical-sector swap padding and trailer".to_string());
             }
         }
 
@@ -502,14 +528,14 @@ impl ImagesBuilder {
                 let dev = SimFlash::new(vec![16 * 1024, 16 * 1024, 16 * 1024, 16 * 1024, 64 * 1024,
                                         32 * 1024, 32 * 1024, 64 * 1024,
                                         32 * 1024, 32 * 1024, 64 * 1024,
-                                        128 * 1024],
+                                        64 * 1024, 64 * 1024, 64 * 1024],
                                         align as usize, erased_val);
                 let dev_id = 0;
                 let mut areadesc = AreaDesc::new();
                 areadesc.add_flash_sectors(dev_id, &dev);
-                areadesc.add_image(0x020000, 0x020000, FlashId::Image0, dev_id);
-                areadesc.add_image(0x040000, 0x020000, FlashId::Image1, dev_id);
-                areadesc.add_image(0x060000, 0x020000, FlashId::ImageScratch, dev_id);
+                areadesc.add_image(0x020000, 0x030000, FlashId::Image0, dev_id);
+                areadesc.add_image(0x050000, 0x030000, FlashId::Image1, dev_id);
+                areadesc.add_image(0x080000, 0x010000, FlashId::ImageScratch, dev_id);
 
                 let mut flash = SimMultiFlash::new();
                 flash.insert(dev_id, dev);
@@ -563,14 +589,27 @@ impl ImagesBuilder {
             }
             DeviceName::K64f => {
                 // NXP style flash.  Small sectors, one small sector for scratch.
-                let dev = SimFlash::new(vec![4096; 128], align as usize, erased_val);
+                let logical_sector_size = c::logical_sector_size();
+                let dev = if logical_sector_size > 4096 {
+                    SimFlash::new(vec![logical_sector_size; 7], align as usize, erased_val)
+                } else {
+                    SimFlash::new(vec![4096; 128], align as usize, erased_val)
+                };
 
                 let dev_id = 0;
                 let mut areadesc = AreaDesc::new();
                 areadesc.add_flash_sectors(dev_id, &dev);
-                areadesc.add_image(0x020000, 0x020000, FlashId::Image0, dev_id);
-                areadesc.add_image(0x040000, 0x020000, FlashId::Image1, dev_id);
-                areadesc.add_image(0x060000, 0x001000, FlashId::ImageScratch, dev_id);
+                if logical_sector_size > 4096 {
+                    areadesc.add_image(0, 3 * logical_sector_size, FlashId::Image0, dev_id);
+                    areadesc.add_image(3 * logical_sector_size, 3 * logical_sector_size,
+                                       FlashId::Image1, dev_id);
+                    areadesc.add_image(6 * logical_sector_size, logical_sector_size,
+                                       FlashId::ImageScratch, dev_id);
+                } else {
+                    areadesc.add_image(0x020000, 0x020000, FlashId::Image0, dev_id);
+                    areadesc.add_image(0x040000, 0x020000, FlashId::Image1, dev_id);
+                    areadesc.add_image(0x060000, 0x001000, FlashId::ImageScratch, dev_id);
+                }
 
                 let mut flash = SimMultiFlash::new();
                 flash.insert(dev_id, dev);
@@ -818,6 +857,14 @@ impl Images {
             return false;
         }
 
+        // These tests inject a reset at every physical flash operation. The
+        // operation count is not stable when one logical sector spans several
+        // physical erase sectors, so logical-sector coverage uses the random
+        // reset test below instead.
+        if c::logical_sector_size() != 0 {
+            return false;
+        }
+
         let mut fails = 0;
         let total_flash_ops = self.total_count.unwrap();
 
@@ -906,6 +953,10 @@ impl Images {
 
     pub fn run_revert_with_fails(&self) -> bool {
         if Caps::OverwriteUpgrade.present() || !Caps::modifies_flash() {
+            return false;
+        }
+
+        if c::logical_sector_size() != 0 {
             return false;
         }
 
@@ -1935,6 +1986,15 @@ fn estimate_swap_scratch_trailer_size(dev: &dyn Flash, areadesc: &AreaDesc, slot
     trailer_sz
 }
 
+fn boot_sector_size(dev: &dyn Flash) -> usize {
+    let logical_sector_size = c::logical_sector_size();
+    if logical_sector_size != 0 {
+        logical_sector_size
+    } else {
+        dev.sector_iter().next().unwrap().size
+    }
+}
+
 fn image_largest_trailer(dev: &dyn Flash, areadesc: &AreaDesc, slot: &SlotInfo) -> usize {
             // Using the header size we know, the trailer size, and the slot size, we can compute
             // the largest image possible.
@@ -1942,7 +2002,7 @@ fn image_largest_trailer(dev: &dyn Flash, areadesc: &AreaDesc, slot: &SlotInfo) 
                 // magic + image-ok + copy-done + swap-info
                 c::boot_magic_sz() + 3 * c::boot_max_align()
             } else if Caps::SwapUsingOffset.present() || Caps::SwapUsingMove.present() {
-                let sector_size = dev.sector_iter().next().unwrap().size as u32;
+                let sector_size = boot_sector_size(dev) as u32;
                 align_up(c::boot_trailer_sz(dev.align() as u32), sector_size) as usize
             } else if Caps::SwapUsingScratch.present() {
                 estimate_swap_scratch_trailer_size(dev, areadesc, slot)
@@ -1959,8 +2019,7 @@ fn required_slot_padding(dev: &dyn Flash) -> usize {
     let mut required_padding = 0;
 
     if Caps::SwapUsingMove.present() || Caps::SwapUsingOffset.present() {
-        // Assumes equally-sized sectors
-        let sector_size = dev.sector_iter().next().unwrap().size;
+        let sector_size = boot_sector_size(dev);
 
         required_padding = sector_size;
     };
@@ -2025,7 +2084,7 @@ fn install_image_with_key(
     let mut tlv: Box<dyn ManifestGen> = Box::new(make_tlv(signing_key));
 
     if Caps::SwapUsingOffset.present() && slot_ind == 1 {
-        let sector_size = dev.sector_iter().next().unwrap().size as usize;
+        let sector_size = boot_sector_size(dev);
         offset += sector_size;
     }
 
@@ -2321,7 +2380,7 @@ fn verify_image(flash: &SimMultiFlash, slot: &SlotInfo, images: &ImageData) -> b
     dev.read(offset, &mut copy).unwrap();
 
     if Caps::SwapUsingOffset.present() && (slot.index % 2) == 1 {
-        let sector_size = dev.sector_iter().next().unwrap().size as usize;
+        let sector_size = boot_sector_size(dev);
         let mut copy_offset = vec![0u8; buf.len()];
         let offset_offset = slot.base_off + sector_size;
         dev.read(offset_offset, &mut copy_offset).unwrap();

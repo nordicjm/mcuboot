@@ -23,6 +23,40 @@ use std::{
 };
 use mcuboot_sys::c;
 
+#[cfg(all(feature = "logical-sectors-4k", any(feature = "swap-move", feature = "swap-offset")))]
+#[test]
+fn logical_4k_runs_small_page_device() {
+    assert!(ImagesBuilder::new(bootsim::DeviceName::Nrf52840, 1, 0xff).is_ok());
+}
+
+#[cfg(all(feature = "logical-sectors-64k", any(feature = "swap-move", feature = "swap-offset")))]
+#[test]
+fn logical_64k_runs_mixed_sector_device() {
+    assert!(ImagesBuilder::new(bootsim::DeviceName::Stm32f4, 1, 0xff).is_ok());
+}
+
+#[cfg(all(feature = "logical-sectors-256k", any(feature = "swap-move", feature = "swap-offset")))]
+#[test]
+fn logical_256k_runs_native_sector_device() {
+    assert!(ImagesBuilder::new(bootsim::DeviceName::K64f, 1, 0xff).is_ok());
+}
+
+#[cfg(feature = "logical-sectors-64k")]
+#[test]
+fn logical_sector_verifier_rejects_hardware_boundary_mismatch() {
+    let (mut flash, areas, _) = ImagesBuilder::make_device(
+        bootsim::DeviceName::Stm32f769, 1, 0xff);
+    assert_eq!(c::boot_go(&mut flash, &areas, None, None, false).result(), Some(-1));
+}
+
+#[cfg(feature = "logical-sectors-64k")]
+#[test]
+fn logical_sector_verifier_rejects_slot_size_mismatch() {
+    let (mut flash, areas, _) = ImagesBuilder::make_device(
+        bootsim::DeviceName::Nrf52840, 1, 0xff);
+    assert_eq!(c::boot_go(&mut flash, &areas, None, None, false).result(), Some(-1));
+}
+
 /// A single test, after setting up logging and such.  Within the $body,
 /// $arg will be bound to each device.
 macro_rules! test_shell {

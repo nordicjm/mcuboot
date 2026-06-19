@@ -73,6 +73,10 @@ jobs:
         - "ram-load enc-aes256-kw sig-ecdsa-mbedtls multiimage"
         - "custom-crypto,custom-crypto overwrite-only,custom-crypto validate-primary-slot,custom-crypto swap-offset"
         - "custom-enc-crypto,custom-enc-crypto validate-primary-slot,custom-enc-crypto swap-offset validate-primary-slot max-align-32"
+        - "logical-sectors-4k,swap-move logical-sectors-4k,swap-offset logical-sectors-4k"
+        - "logical-sectors-64k,swap-move logical-sectors-64k,swap-offset logical-sectors-64k"
+        - "logical-sectors-256k,swap-move logical-sectors-256k,swap-offset logical-sectors-256k"
+        - "logical-sectors-4k validate-primary-slot,logical-sectors-4k multiimage,logical-sectors-4k enc-rsa,logical-sectors-4k max-align-32"
     runs-on: ubuntu-latest
     env:
       MULTI_FEATURES: ${{ matrix.features }}
