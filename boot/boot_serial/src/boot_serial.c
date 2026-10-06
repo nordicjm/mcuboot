@@ -497,7 +497,8 @@ bs_set(struct boot_loader_state *state, char *buf, int len)
      *   "hash":<hash of image (OPTIONAL for single image only)>
      * }
      */
-    uint32_t slot;
+    uint32_t slot = 0;
+    bool active_slot = false;
     uint8_t image_index = 0;
     size_t decoded = 0;
     uint8_t hash[IMAGE_HASH_SIZE];
@@ -505,6 +506,7 @@ bs_set(struct boot_loader_state *state, char *buf, int len)
     struct zcbor_string img_hash = { 0 };
     bool ok;
     int rc;
+int tehstate;
 
 #ifdef MCUBOOT_SERIAL_IMG_GRP_HASH
     bool found = false;
@@ -538,9 +540,14 @@ bs_set(struct boot_loader_state *state, char *buf, int len)
 
     if (img_hash.len != 0) {
         IMAGES_ITER(BOOT_CURR_IMG(state)) {
-#ifdef MCUBOOT_SWAP_USING_OFFSET
+//#ifdef MCUBOOT_SWAP_USING_OFFSET
             int swap_status = boot_swap_type_multi(BOOT_CURR_IMG(state));
+//#endif
+#if defined(CONFIG_BOOT_DIRECT_XIP) || defined(CONFIG_BOOT_RAM_LOAD)
+struct image_version primary_version = { 0x00 };
+struct image_version secondary_version = { 0x00 };
 #endif
+
             image_index = BOOT_CURR_IMG(state);
             (void) image_index; /* Might be unused depending on the configuration */
 
@@ -603,6 +610,14 @@ bs_set(struct boot_loader_state *state, char *buf, int len)
                     }
                 }
 
+#if defined(CONFIG_BOOT_DIRECT_XIP) || defined(CONFIG_BOOT_RAM_LOAD)
+if (slot == BOOT_SLOT_PRIMARY) {
+memcpy(&primary_version, &hdr.ih_ver, sizeof(struct image_version));
+} else {
+memcpy(&secondary_version, &hdr.ih_ver, sizeof(struct image_version));
+}
+#endif
+
 #ifdef MCUBOOT_SERIAL_IMG_GRP_HASH
                 /* Retrieve hash of image for identification */
 #ifdef MCUBOOT_SWAP_USING_OFFSET
@@ -613,6 +628,42 @@ bs_set(struct boot_loader_state *state, char *buf, int len)
 #endif
                 if (rc == 0 && memcmp(hash, img_hash.value, sizeof(hash)) == 0) {
                     /* Hash matches, set this slot for test or confirmation */
+#if defined(CONFIG_BOOT_SWAP_USING_OFFSET) || defined(CONFIG_BOOT_SWAP_USING_MOVE) || defined(CONFIG_BOOT_SWAP_USING_SCRATCH) || defined(CONFIG_BOOT_UPGRADE_ONLY)
+                    if (slot == BOOT_SLOT_PRIMARY && !confirm) {
+                        BOOT_LOG_ERR("Cannot mark primary image for test");
+                        rc = MGMT_ERR_EINVAL;
+                        goto out;
+                    }
+
+if (swap_status == BOOT_SWAP_TYPE_TEST && !confirm)
+{
+//already marked as test
+                        rc = 1;
+                        goto out;
+}
+else if (swap_status == BOOT_SWAP_TYPE_PERM && confirm)
+{
+                        rc = 2;
+                        goto out;
+}
+else if (swap_status == BOOT_SWAP_TYPE_REVERT && !confirm)
+{
+                        rc = 3;
+                        goto out;
+}
+
+if (swap_status == BOOT_SWAP_TYPE_TEST || BOOT_SWAP_TYPE_PERM)
+{
+active_slot = (slot == BOOT_SLOT_SECONDARY ? true : false);
+}
+else
+{
+active_slot = (slot == BOOT_SLOT_PRIMARY ? true : false);
+}
+#endif
+#if defined(CONFIG_BOOT_DIRECT_XIP) || defined(CONFIG_BOOT_RAM_LOAD)
+//active_slot = ((boot_compare_version(&primary_version, &secondary_version) < 0 ? BOOT_SLOT_SECONDARY : BOOT_SLOT_PRIMARY) == slot);
+#endif
                     found = true;
                     goto set_image_state;
                 }
@@ -629,7 +680,7 @@ bs_set(struct boot_loader_state *state, char *buf, int len)
 #endif
 
 set_image_state:
-    rc = boot_set_pending_multi(image_index, confirm);
+        rc = boot_set_next(BOOT_IMG_AREA(state, slot), active_slot, confirm);
 
 out:
     if (rc == 0) {
