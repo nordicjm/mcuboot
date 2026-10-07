@@ -73,6 +73,10 @@
 #include "boot_serial/boot_serial_encryption.h"
 #endif
 
+#if (defined(BOOT_SERIAL_IMG_GRP_IMAGE_STATE) && defined(CONFIG_BOOT_DIRECT_XIP)) || (defined(MCUBOOT_SERIAL_IMG_GRP_HASH) && (defined(CONFIG_BOOT_DIRECT_XIP) || defined(CONFIG_BOOT_RAM_LOAD)))
+#include "../bootutil/src/bootutil_loader.h"
+#endif
+
 #include "bootutil/boot_hooks.h"
 
 BOOT_LOG_MODULE_DECLARE(mcuboot);
@@ -314,8 +318,69 @@ bs_list(struct boot_loader_state *state, char *buf, int len)
 #if defined(MCUBOOT_SERIAL_IMG_GRP_IMAGE_STATE) || defined(MCUBOOT_SWAP_USING_OFFSET)
         int swap_status = boot_swap_type_multi(BOOT_CURR_IMG(state));
 #endif
+#if defined(MCUBOOT_DIRECT_XIP) && !defined(MCUBOOT_DIRECT_XIP_REVERT)
+        struct image_version image_versions[BOOT_NUM_SLOTS] = { 0x00 };
+        uint8_t active_slot;
+#endif
         image_index = BOOT_CURR_IMG(state);
         (void) image_index; /* Might be unused depending on the configuration */
+
+#if defined(MCUBOOT_DIRECT_XIP) && !defined(MCUBOOT_DIRECT_XIP_REVERT)
+        for (slot = 0; slot < BOOT_NUM_SLOTS; slot++) {
+            FIH_DECLARE(fih_rc, FIH_FAILURE);
+            int rc;
+            uint8_t tmpbuf[64];
+
+            fap = BOOT_IMG_AREA(state, slot);
+            if (fap == NULL) {
+                continue;
+            }
+
+            rc = BOOT_HOOK_CALL(boot_read_image_header_hook,
+                                BOOT_HOOK_REGULAR, image_index, slot, &hdr);
+            if (rc == BOOT_HOOK_REGULAR)
+            {
+                flash_area_read(fap, 0, &hdr, sizeof(hdr));
+            }
+
+            if (hdr.ih_magic == IMAGE_MAGIC)
+            {
+                BOOT_HOOK_CALL_FIH(boot_image_check_hook,
+                                   FIH_BOOT_HOOK_REGULAR,
+                                   fih_rc, image_index, slot);
+                if (FIH_EQ(fih_rc, FIH_BOOT_HOOK_REGULAR))
+                {
+#if defined(MCUBOOT_ENC_IMAGES)
+                    if (IS_ENCRYPTED(&hdr) && MUST_DECRYPT(fap, image_index, &hdr)) {
+                        FIH_CALL(boot_image_validate_encrypted, fih_rc, state, fap,
+                                 &hdr, tmpbuf, sizeof(tmpbuf));
+                    } else {
+                        if (IS_ENCRYPTED(&hdr)) {
+                            /*
+                             * There is an image present which has an encrypted flag set but is
+                             * not encrypted, therefore remove the flag from the header and run a
+                             * normal image validation on it.
+                             */
+                            hdr.ih_flags &= ~ENCRYPTIONFLAGS;
+                        }
+#endif
+                        FIH_CALL(bootutil_img_validate, fih_rc, state, &hdr,
+                                 fap, tmpbuf, sizeof(tmpbuf), NULL, 0, NULL);
+#if defined(MCUBOOT_ENC_IMAGES)
+                    }
+#endif
+                }
+            }
+
+            if (FIH_NOT_EQ(fih_rc, FIH_SUCCESS)) {
+                continue;
+            }
+
+            memcpy(&image_versions[slot], &hdr.ih_ver, sizeof(struct image_version));
+        }
+
+        active_slot = (boot_compare_version(&image_versions[BOOT_SLOT_PRIMARY], &image_versions[BOOT_SLOT_SECONDARY]) < 0 ? BOOT_SLOT_SECONDARY : BOOT_SLOT_PRIMARY);
+#endif
 
         for (slot = 0; slot < BOOT_NUM_SLOTS; slot++) {
             FIH_DECLARE(fih_rc, FIH_FAILURE);
@@ -355,6 +420,27 @@ bs_list(struct boot_loader_state *state, char *buf, int len)
                 flash_area_read(fap, 0, &hdr, sizeof(hdr));
 #endif
             }
+
+#if 0
+#ifdef MCUBOOT_SWAP_USING_OFFSET
+            if (hdr.ih_magic != IMAGE_MAGIC && slot == BOOT_SLOT_SECONDARY &&
+                swap_status != BOOT_SWAP_TYPE_REVERT) {
+/* Handles when an image in primary  */
+                start_off = 0;
+                rc = BOOT_HOOK_CALL(boot_read_image_header_hook,
+                                    BOOT_HOOK_REGULAR, image_index, slot, &hdr);
+                if (rc == BOOT_HOOK_REGULAR)
+                {
+                    flash_area_read(fap, 0, &hdr, sizeof(hdr));
+                }
+
+                if (hdr.ih_magic == IMAGE_MAGIC)
+                {
+                    state->secondary_offset[image_index] = 0;
+                }
+            }
+#endif
+#endif
 
             if (hdr.ih_magic == IMAGE_MAGIC)
             {
@@ -408,6 +494,13 @@ bs_list(struct boot_loader_state *state, char *buf, int len)
 #endif
 
 #ifdef MCUBOOT_SERIAL_IMG_GRP_IMAGE_STATE
+#if defined(MCUBOOT_DIRECT_XIP) && !defined(MCUBOOT_DIRECT_XIP_REVERT)
+            if (slot == active_slot)
+            {
+                confirmed = true;
+                active = true;
+            }
+#else
             if (swap_status == BOOT_SWAP_TYPE_NONE) {
                 if (slot == BOOT_SLOT_PRIMARY) {
                     confirmed = true;
@@ -433,6 +526,7 @@ bs_list(struct boot_loader_state *state, char *buf, int len)
                     confirmed = true;
                 }
             }
+#endif
 
             if (!(hdr.ih_flags & IMAGE_F_NON_BOOTABLE)) {
                 zcbor_tstr_put_lit_cast(cbor_state, "bootable");
@@ -635,34 +729,35 @@ memcpy(&secondary_version, &hdr.ih_ver, sizeof(struct image_version));
                         goto out;
                     }
 
-if (swap_status == BOOT_SWAP_TYPE_TEST && !confirm)
-{
-//already marked as test
-                        rc = 1;
+                    if (swap_status == BOOT_SWAP_TYPE_TEST || swap_status == BOOT_SWAP_TYPE_PERM)
+                    {
+                        /* Once a pending operation is set, it cannot be changed */
+                        rc = MGMT_ERR_EBADSTATE;
                         goto out;
-}
-else if (swap_status == BOOT_SWAP_TYPE_PERM && confirm)
-{
-                        rc = 2;
+                    }
+                    else if (swap_status == BOOT_SWAP_TYPE_REVERT && slot == BOOT_SLOT_SECONDARY)
+                    {
+                        /* Since the image is going to be reverted on next boot, it cannot be confirmed */
+                        rc = MGMT_ERR_EBADSTATE;
                         goto out;
-}
-else if (swap_status == BOOT_SWAP_TYPE_REVERT && !confirm)
-{
-                        rc = 3;
+                    }
+                    else if (swap_status == BOOT_SWAP_TYPE_REVERT && !confirm)
+                    {
+                        rc = MGMT_ERR_EBADSTATE;
                         goto out;
-}
+                    }
 
-if (swap_status == BOOT_SWAP_TYPE_TEST || BOOT_SWAP_TYPE_PERM)
-{
-active_slot = (slot == BOOT_SLOT_SECONDARY ? true : false);
-}
-else
-{
-active_slot = (slot == BOOT_SLOT_PRIMARY ? true : false);
-}
+                    if (swap_status == BOOT_SWAP_TYPE_TEST || swap_status == BOOT_SWAP_TYPE_PERM)
+                    {
+                        active_slot = (slot == BOOT_SLOT_SECONDARY ? true : false);
+                    }
+                    else
+                    {
+                        active_slot = (slot == BOOT_SLOT_PRIMARY ? true : false);
+                    }
 #endif
 #if defined(CONFIG_BOOT_DIRECT_XIP) || defined(CONFIG_BOOT_RAM_LOAD)
-//active_slot = ((boot_compare_version(&primary_version, &secondary_version) < 0 ? BOOT_SLOT_SECONDARY : BOOT_SLOT_PRIMARY) == slot);
+active_slot = ((boot_compare_version(&primary_version, &secondary_version) < 0 ? BOOT_SLOT_SECONDARY : BOOT_SLOT_PRIMARY) == slot);
 #endif
                     found = true;
                     goto set_image_state;
