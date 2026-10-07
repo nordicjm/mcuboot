@@ -630,7 +630,7 @@ if (slot == inactive_slot) {
     boot_serial_output();
 }
 
-#ifdef MCUBOOT_SERIAL_IMG_GRP_IMAGE_STATE
+#if defined(MCUBOOT_SERIAL_IMG_GRP_IMAGE_STATE) && (!defined(MCUBOOT_DIRECT_XIP) || defined(MCUBOOT_DIRECT_XIP_REVERT))
 /*
  * Set image state.
  */
@@ -809,8 +809,86 @@ memcpy(&secondary_version, &hdr.ih_ver, sizeof(struct image_version));
                         active_slot = (slot == BOOT_SLOT_PRIMARY ? true : false);
                     }
 #endif
-#if defined(CONFIG_BOOT_DIRECT_XIP) || defined(CONFIG_BOOT_RAM_LOAD)
-active_slot = ((boot_compare_version(&primary_version, &secondary_version) < 0 ? BOOT_SLOT_SECONDARY : BOOT_SLOT_PRIMARY) == slot);
+#if defined(MCUBOOT_DIRECT_XIP_REVERT) //|| defined(CONFIG_BOOT_RAM_LOAD)
+        struct image_version image_versions[BOOT_NUM_SLOTS] = { 0x00 };
+        struct boot_swap_state image_swap_state = { 0x00 };
+        uint8_t active_slot;
+        uint8_t other_slot = (slot == BOOT_SLOT_SECONDARY ? BOOT_SLOT_PRIMARY : BOOT_SLOT_SECONDARY);
+                   FIH_DECLARE(fih_rc, FIH_FAILURE);
+
+                   memcpy(&image_versions[slot], &hdr.ih_ver, sizeof(struct image_version));
+
+                   fap = BOOT_IMG_AREA(state, other_slot);
+                   if (fap == NULL) {
+//todo
+                       continue;
+                   }
+
+                   rc = BOOT_HOOK_CALL(boot_read_image_header_hook,
+                                       BOOT_HOOK_REGULAR, image_index, other_slot, &hdr);
+                   if (rc == BOOT_HOOK_REGULAR)
+                   {
+                       flash_area_read(fap, 0, &hdr, sizeof(hdr));
+                   }
+
+                   if (hdr.ih_magic == IMAGE_MAGIC)
+                   {
+                       BOOT_HOOK_CALL_FIH(boot_image_check_hook,
+                                          FIH_BOOT_HOOK_REGULAR,
+                                          fih_rc, image_index, other_slot);
+                       if (FIH_EQ(fih_rc, FIH_BOOT_HOOK_REGULAR))
+                       {
+#if defined(MCUBOOT_ENC_IMAGES)
+                           if (IS_ENCRYPTED(&hdr) && MUST_DECRYPT(fap, image_index, &hdr)) {
+                               FIH_CALL(boot_image_validate_encrypted, fih_rc, state, fap,
+                                        &hdr, tmpbuf, sizeof(tmpbuf));
+                            } else {
+                               if (IS_ENCRYPTED(&hdr)) {
+                                  /*
+                                   * There is an image present which has an encrypted flag set but is
+                                   * not encrypted, therefore remove the flag from the header and run a
+                                   * normal image validation on it.
+                                   */
+                                   hdr.ih_flags &= ~ENCRYPTIONFLAGS;
+                               }
+#endif
+                               FIH_CALL(bootutil_img_validate, fih_rc, state, &hdr,
+                                        fap, tmpbuf, sizeof(tmpbuf), NULL, 0, NULL);
+#if defined(MCUBOOT_ENC_IMAGES)
+                           }
+#endif
+                       }
+                   }
+
+                   if (FIH_NOT_EQ(fih_rc, FIH_SUCCESS)) {
+//todo
+                       continue;
+                   }
+
+                   memcpy(&image_versions[other_slot], &hdr.ih_ver, sizeof(struct image_version));
+                   active_slot = (boot_compare_version(&image_versions[BOOT_SLOT_PRIMARY], &image_versions[BOOT_SLOT_SECONDARY]) < 0 ? BOOT_SLOT_SECONDARY : BOOT_SLOT_PRIMARY);
+
+                   if (slot != active_slot) {
+//                   BOOT_LOG_ERR("todo");
+                       rc = MGMT_ERR_EBADSTATE;
+                       goto out;
+                   }
+
+                   fap = BOOT_IMG_AREA(state, slot);
+                   rc = boot_read_swap_state(fap, &image_swap_state);
+
+                   if (image_swap_state.magic == BOOT_MAGIC_GOOD) {
+                       if (image_swap_state.image_ok == BOOT_FLAG_SET) {
+                           rc = MGMT_ERR_EBADSTATE;
+                           goto out;
+                       } else if (image_swap_state.copy_done == BOOT_FLAG_SET && !confirm) {
+                           rc = MGMT_ERR_EBADSTATE;
+                           goto out;
+                       }
+                   }
+
+                    /* Since we control the confirm flag ourselves, never specify that this is the active image */
+                    active_slot = 0;
 #endif
                     found = true;
                     goto set_image_state;
@@ -892,7 +970,7 @@ bs_list_set(uint8_t op, char *buf, int len)
     if (op == NMGR_OP_READ) {
         bs_list(state, buf, len);
     } else {
-#ifdef MCUBOOT_SERIAL_IMG_GRP_IMAGE_STATE
+#if defined(MCUBOOT_SERIAL_IMG_GRP_IMAGE_STATE) && (!defined(MCUBOOT_DIRECT_XIP) || defined(MCUBOOT_DIRECT_XIP_REVERT))
         bs_set(state, buf, len);
 #else
         rc = MGMT_ERR_ENOTSUP;
