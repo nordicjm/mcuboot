@@ -1565,4 +1565,8 @@ config LOG_PROCESS_THREAD
 config MCUBOOT_BOOTUTIL_LIB_OWN_LOG
 	bool
 
+config MCUBOOT_BOOTUTIL_LIB_FOR_DIRECT_XIP
+	depends on BOOT_DIRECT_XIP_REVERT
+	default y if BOOT_DIRECT_XIP_REVERT
+
 source "Kconfig.zephyr"
