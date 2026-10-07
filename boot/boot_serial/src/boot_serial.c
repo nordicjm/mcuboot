@@ -318,14 +318,18 @@ bs_list(struct boot_loader_state *state, char *buf, int len)
 #if defined(MCUBOOT_SERIAL_IMG_GRP_IMAGE_STATE) || defined(MCUBOOT_SWAP_USING_OFFSET)
         int swap_status = boot_swap_type_multi(BOOT_CURR_IMG(state));
 #endif
-#if defined(MCUBOOT_DIRECT_XIP) && !defined(MCUBOOT_DIRECT_XIP_REVERT)
+#if defined(MCUBOOT_DIRECT_XIP)
         struct image_version image_versions[BOOT_NUM_SLOTS] = { 0x00 };
+#if defined(MCUBOOT_DIRECT_XIP_REVERT)
+        struct boot_swap_state image_swap_states[BOOT_NUM_SLOTS] = { 0x00 };
+        uint8_t inactive_slot;
+#endif
         uint8_t active_slot;
 #endif
         image_index = BOOT_CURR_IMG(state);
         (void) image_index; /* Might be unused depending on the configuration */
 
-#if defined(MCUBOOT_DIRECT_XIP) && !defined(MCUBOOT_DIRECT_XIP_REVERT)
+#if defined(MCUBOOT_DIRECT_XIP)
         for (slot = 0; slot < BOOT_NUM_SLOTS; slot++) {
             FIH_DECLARE(fih_rc, FIH_FAILURE);
             int rc;
@@ -376,10 +380,18 @@ bs_list(struct boot_loader_state *state, char *buf, int len)
                 continue;
             }
 
+#if defined(MCUBOOT_DIRECT_XIP_REVERT)
+            rc = boot_read_swap_state(fap, &image_swap_states[slot]);
+#endif
+
             memcpy(&image_versions[slot], &hdr.ih_ver, sizeof(struct image_version));
         }
 
         active_slot = (boot_compare_version(&image_versions[BOOT_SLOT_PRIMARY], &image_versions[BOOT_SLOT_SECONDARY]) < 0 ? BOOT_SLOT_SECONDARY : BOOT_SLOT_PRIMARY);
+
+#if defined(MCUBOOT_DIRECT_XIP_REVERT)
+        inactive_slot = (active_slot == BOOT_SLOT_SECONDARY ? BOOT_SLOT_PRIMARY : BOOT_SLOT_SECONDARY);
+#endif
 #endif
 
         for (slot = 0; slot < BOOT_NUM_SLOTS; slot++) {
@@ -499,6 +511,45 @@ bs_list(struct boot_loader_state *state, char *buf, int len)
             {
                 confirmed = true;
                 active = true;
+            }
+#elif defined(MCUBOOT_DIRECT_XIP_REVERT)
+//TODO
+            if (image_swap_states[active_slot].magic == BOOT_MAGIC_GOOD) {
+                if (image_swap_states[active_slot].image_ok == BOOT_FLAG_SET) {
+                    if (slot == active_slot) {
+                        confirmed = true;
+                    }
+                } else if (image_swap_states[active_slot].copy_done == BOOT_FLAG_SET) {
+                    if (slot == inactive_slot) {
+                        confirmed = true;
+                    }
+                } else {
+                    if (slot == active_slot) {
+                        pending = true;
+                    } else {
+                        confirmed = true;
+                    }
+                }
+            } else if (image_swap_states[inactive_slot].magic == BOOT_MAGIC_GOOD) {
+                if (image_swap_states[inactive_slot].image_ok == BOOT_FLAG_SET) {
+                    if (slot == inactive_slot) {
+                        confirmed = true;
+                    }
+#if 0
+                } else if (image_swap_states[inactive_slot].copy_done == BOOT_FLAG_SET) {
+active = true;
+if (slot == inactive_slot) {
+                    pending = true;
+} else {
+                    confirmed = true;
+}
+                } else {
+active = true;
+if (slot == inactive_slot) {
+                    pending = true;
+}
+#endif
+                }
             }
 #else
             if (swap_status == BOOT_SWAP_TYPE_NONE) {
