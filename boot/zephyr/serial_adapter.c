@@ -63,6 +63,14 @@
 
 BOOT_LOG_MODULE_REGISTER(serial_adapter);
 
+uint8_t tmp_log[4096] = {0x00};
+uint32_t tmp_log_pos = 0;
+static void request_time_timer_handler(struct k_timer *dummy)
+{
+LOG_HEXDUMP_ERR(tmp_log, tmp_log_pos, "dataz");
+}
+static K_TIMER_DEFINE(request_time_timer, request_time_timer_handler, NULL);
+
 /** @brief Console input representation
  *
  * This struct is used to represent an input line from a serial interface.
@@ -89,7 +97,8 @@ static uint8_t rx_buf[CONFIG_BOOT_MAX_LINE_INPUT_LEN];
 static uint8_t rx_batch_buf[CONFIG_BOOT_SERIAL_UART_RX_BATCH_SIZE];
 #endif
 
-#if defined(CONFIG_BOOT_SERIAL_CDC_ACM) || defined(CONFIG_BOOT_SERIAL_RAW_PROTOCOL)
+//#if defined(CONFIG_BOOT_SERIAL_CDC_ACM) || defined(CONFIG_BOOT_SERIAL_RAW_PROTOCOL)
+#if 1
 /*
  * Due to USB CDC ACM having a large write size, which might be more than the available buffers
  * can hold, this will be set to true when the UART is blocked and should not be read from until
@@ -212,6 +221,8 @@ boot_console_init(void)
 		initialized = true;
 	}
 
+k_timer_start(&request_time_timer, K_SECONDS(15), K_NO_WAIT);
+
 	return rc;
 }
 
@@ -227,7 +238,8 @@ boot_uart_fifo_callback(const struct device *dev, void *user_data)
 		return;
 	}
 
-#if defined(CONFIG_BOOT_SERIAL_CDC_ACM) || defined(CONFIG_BOOT_SERIAL_RAW_PROTOCOL)
+#if 1
+//#if defined(CONFIG_BOOT_SERIAL_CDC_ACM) || defined(CONFIG_BOOT_SERIAL_RAW_PROTOCOL)
 	if (uart_blocked == true) {
 		return;
 	}
@@ -281,15 +293,22 @@ boot_uart_fifo_callback(const struct device *dev, void *user_data)
 			cmd = NULL;
 		}
 #else
-#if defined(CONFIG_BOOT_SERIAL_CDC_ACM)
+//#if defined(CONFIG_BOOT_SERIAL_CDC_ACM)
+#if 1
 		size_t max_read_size = sys_slist_len(&avail_queue) *
-				       CONFIG_BOOT_MAX_LINE_INPUT_LEN + copy_len;
+				       CONFIG_BOOT_MAX_LINE_INPUT_LEN /*+ copy_len*/;
 
 		if (max_read_size > sizeof(rx_batch_buf)) {
 			max_read_size = sizeof(rx_batch_buf);
-		} else if (max_read_size == 0) {
+		}
+
+		if (max_read_size == 0) {
 			uart_blocked = true;
 			uart_irq_rx_disable(uart_dev);
+//LOG_ERR("a");
+if (tmp_log_pos < sizeof(tmp_log)) {
+tmp_log[tmp_log_pos++] = 'a';
+}
 			return;
 		}
 
@@ -298,6 +317,11 @@ boot_uart_fifo_callback(const struct device *dev, void *user_data)
 		rx = uart_fifo_read(uart_dev, rx_batch_buf, sizeof(rx_batch_buf));
 #endif
 		if (rx <= 0) {
+//LOG_ERR("b");
+//if (tmp_log_pos < sizeof(tmp_log)) {
+//tmp_log[tmp_log_pos++] = 'b';
+//tmp_log[tmp_log_pos++] = (uint8_t)rx;
+//}
 			break;
 		}
 
@@ -310,10 +334,18 @@ boot_uart_fifo_callback(const struct device *dev, void *user_data)
 
 				node = sys_slist_get(&avail_queue);
 				if (!node) {
+			uart_blocked = true;
+			uart_irq_rx_disable(uart_dev);
 					BOOT_LOG_ERR("Not enough memory to store"
 						     " incoming data!");
+if (tmp_log_pos < sizeof(tmp_log)) {
+tmp_log[tmp_log_pos++] = 'q';
+}
 					return;
 				}
+if (tmp_log_pos < sizeof(tmp_log)) {
+tmp_log[tmp_log_pos++] = 'r';
+}
 				cmd = CONTAINER_OF(node, struct line_input, node);
 			}
 
@@ -330,7 +362,9 @@ boot_uart_fifo_callback(const struct device *dev, void *user_data)
 				sys_slist_append(&lines_queue, &cmd->node);
 				cur = 0;
 				cmd = NULL;
-
+if (tmp_log_pos < sizeof(tmp_log)) {
+tmp_log[tmp_log_pos++] = 's';
+}
 			}
 		}
 #endif
@@ -358,7 +392,8 @@ boot_uart_fifo_getline(char **line)
 	sys_snode_t *node;
 	int key;
 
-#if defined(CONFIG_BOOT_SERIAL_CDC_ACM) || defined(CONFIG_BOOT_SERIAL_RAW_PROTOCOL)
+#if 1
+//#if defined(CONFIG_BOOT_SERIAL_CDC_ACM) || defined(CONFIG_BOOT_SERIAL_RAW_PROTOCOL)
 	bool unblock = false;
 #endif
 
@@ -368,7 +403,8 @@ boot_uart_fifo_getline(char **line)
 		if (sys_slist_peek_tail(&avail_queue) != &input_cmd->node) {
 			sys_slist_append(&avail_queue, &input_cmd->node);
 
-#if defined(CONFIG_BOOT_SERIAL_CDC_ACM) || defined(CONFIG_BOOT_SERIAL_RAW_PROTOCOL)
+#if 1
+//#if defined(CONFIG_BOOT_SERIAL_CDC_ACM) || defined(CONFIG_BOOT_SERIAL_RAW_PROTOCOL)
 			if (uart_blocked) {
 				unblock = true;
 			}
@@ -379,8 +415,13 @@ boot_uart_fifo_getline(char **line)
 	node = sys_slist_get(&lines_queue);
 	irq_unlock(key);
 
-#if defined(CONFIG_BOOT_SERIAL_CDC_ACM) || defined(CONFIG_BOOT_SERIAL_RAW_PROTOCOL)
+#if 1
+//#if defined(CONFIG_BOOT_SERIAL_CDC_ACM) || defined(CONFIG_BOOT_SERIAL_RAW_PROTOCOL)
 	if (unblock) {
+if (tmp_log_pos < sizeof(tmp_log)) {
+tmp_log[tmp_log_pos++] = 'c';
+}
+//LOG_ERR("c");
 		uart_blocked = false;
 		uart_irq_rx_enable(uart_dev);
 	}

@@ -1,6 +1,13 @@
 &zephyr_udc0 {
-	cdc_acm_uart0 {
+	blob: cdc_acm_uart0 {
 		compatible = "zephyr,cdc-acm-uart";
 		hw-flow-control;
 	};
 };
+
+/ {
+        chosen {
+                zephyr,uart-mcumgr = &blob;
+};
+};
+
